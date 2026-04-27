@@ -113,6 +113,60 @@ frozen upstream.
 - Depends on `akeyless.secrets_management` >= 1.0.0 from Ansible Galaxy.
 - Requires the akeyless Python SDK >= 5.0.
 
+## Releasing to Ansible Galaxy
+
+The `akeyless` namespace on Galaxy is controlled by Akeyless and already
+publishes `akeyless.secrets_management`. Releasing a new version of this
+collection under that namespace requires being a maintainer of the
+namespace, so coordinate internally before tagging a release. The release
+flow once approved:
+
+1. Bump `version` in `galaxy.yml`.
+2. Tag and push:
+
+   ```bash
+   git tag -a v0.1.0 -m "akeyless.awx_integration v0.1.0"
+   git push origin main --tags
+   ```
+
+3. Build the artifact:
+
+   ```bash
+   ansible-galaxy collection build --output-path ./dist .
+   ```
+
+4. Publish to Galaxy with an API key from
+   <https://galaxy.ansible.com/me/preferences>:
+
+   ```bash
+   ansible-galaxy collection publish \
+     ./dist/akeyless-awx_integration-0.1.0.tar.gz \
+     --api-key "$GALAXY_API_KEY"
+   ```
+
+5. After publishing, consumers install with:
+
+   ```yaml
+   # collections/requirements.yml
+   collections:
+     - name: akeyless.awx_integration
+       version: ">=0.1.0"
+   ```
+
+### Installing before a Galaxy release is cut
+
+Until a version is on Galaxy, customers can install directly from Git via
+their project's `collections/requirements.yml`:
+
+```yaml
+collections:
+  - name: https://github.com/Fahmy-Kadiri-akl/ansible-akeyless-awx.git
+    type: git
+    version: main
+```
+
+Pin to a tag (`version: v0.1.0`) once one exists.
+
 ## License
 
 MIT
