@@ -18,13 +18,13 @@ jobs:
       matrix:
         tag: [latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Compute lowercase image name
         run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/akeyless-awx-ee" >> "$GITHUB_ENV"
 
       - name: Trivy scan ${{ matrix.tag }}
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: "${{ env.IMAGE }}:${{ matrix.tag }}"
           format: sarif
@@ -34,14 +34,14 @@ jobs:
           exit-code: "0"
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-${{ matrix.tag }}.sarif
           category: ee-scan-${{ matrix.tag }}
 
       - name: Trivy table summary in job log
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: "${{ env.IMAGE }}:${{ matrix.tag }}"
           format: table
