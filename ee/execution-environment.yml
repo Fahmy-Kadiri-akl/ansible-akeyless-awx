@@ -2,7 +2,7 @@
 version: 3
 images:
   base_image:
-    name: quay.io/ansible/awx-ee:24.6.1
+    name: quay.io/ansible/awx-ee:latest
 dependencies:
   galaxy:
     collections:
@@ -10,10 +10,10 @@ dependencies:
         version: '>=1.0.0'
   python: requirements.txt
 additional_build_files:
-  - src: akeyless-awx_integration-0.1.0.tar.gz
+  - src: akeyless-awx_integration.tar.gz
     dest: configs
 additional_build_steps:
   append_galaxy:
-    - COPY _build/configs/akeyless-awx_integration-0.1.0.tar.gz /tmp/
-    - RUN ansible-galaxy collection install /tmp/akeyless-awx_integration-0.1.0.tar.gz --collections-path /usr/share/ansible/collections
-    - RUN rm /tmp/akeyless-awx_integration-0.1.0.tar.gz
+    - COPY _build/configs/akeyless-awx_integration.tar.gz /tmp/
+    - RUN ansible-galaxy collection install /tmp/akeyless-awx_integration.tar.gz --collections-path /usr/share/ansible/collections
+    - RUN rm /tmp/akeyless-awx_integration.tar.gz
