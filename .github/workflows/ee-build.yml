@@ -75,7 +75,7 @@ jobs:
           docker push "$IMAGE:weekly-${{ steps.meta.outputs.date }}"
 
       - name: Trivy scan of freshly built image
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: "${{ env.IMAGE }}:weekly-${{ steps.meta.outputs.date }}"
           format: sarif
