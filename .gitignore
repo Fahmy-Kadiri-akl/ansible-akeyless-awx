@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.tox/
+.venv/
+venv/
+
+# Ansible build artifacts
+*.tar.gz
+ansible_collections/
+tests/output/
+ee/context-out/
+
+# Throwaway secrets and cert material — never commit
+test-fixtures/
+*.key
+*.pem
+*.crt
+*.csr
+*.srl
+
+# Embedded sample-project git directory used during local testing
+tests/integration/project/.git/
+tests/integration/project/collections/local/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
