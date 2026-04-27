@@ -35,7 +35,7 @@ This collection moves the integration up one layer:
 - Akeyless already deployed (SaaS or self-hosted gateway).
 - A cert-auth method configured in Akeyless, with an access role granting
   read on the secret paths AWX will consume. (See
-  [Akeyless docs](https://docs.akeyless.io/docs/create-a-certificate-auth-method).)
+  [Akeyless docs](https://docs.akeyless.io/docs/auth-with-certificate).)
 - A custom Execution Environment that includes this collection,
   `akeyless.secrets_management` from Galaxy, and the akeyless Python SDK.
   AWX does not auto-install project-level Python deps for inventory updates,
@@ -43,16 +43,28 @@ This collection moves the integration up one layer:
 
 ## Quick start
 
-1. Build the EE:
+1. Use the published reference Execution Environment image:
+
+   ```
+   ghcr.io/fahmy-kadiri-akl/akeyless-awx-ee:0.1.0
+   ```
+
+   It is built on `quay.io/ansible/awx-ee:latest` and contains this
+   collection, `akeyless.secrets_management`, and the `akeyless` Python
+   SDK. The package is public; pulls do not require authentication.
+
+   For environments that require a private/internal registry, the same
+   artifact can be reproduced from the `ee/` directory in this repo:
 
    ```bash
    cd ee
-   ansible-builder build -t your-registry/akeyless-awx-ee:0.1.0 \
+   ansible-builder build -t your-registry.example/akeyless-awx-ee:0.1.0 \
      -f execution-environment.yml --container-runtime docker
-   docker push your-registry/akeyless-awx-ee:0.1.0
+   docker push your-registry.example/akeyless-awx-ee:0.1.0
    ```
 
-2. Register the EE in AWX (Settings -> Execution Environments).
+2. Register the EE in AWX (Settings -> Execution Environments). Use the
+   GHCR image above directly, or the image you pushed.
 
 3. Create the Custom Credential Type from
    `extensions/awx/credential_types/akeyless_cert_auth.yml` (System
@@ -136,7 +148,7 @@ flow once approved:
    ```
 
 4. Publish to Galaxy with an API key from
-   <https://galaxy.ansible.com/me/preferences>:
+   <https://galaxy.ansible.com/ui/token/>:
 
    ```bash
    ansible-galaxy collection publish \

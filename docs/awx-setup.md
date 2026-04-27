@@ -16,14 +16,30 @@ Akeyless; both are assumed to be running.
 - A throwaway client cert + private key issued from the trusted CA, for
   testing. PepsiCo-prod or similar will use their PKI.
 
-## 1. Build a custom Execution Environment
+## 1. Pick an Execution Environment
 
 AWX 24.6.1 ships a default EE (`quay.io/ansible/awx-ee:latest`) that does
-**not** contain the akeyless Python SDK. AWX does **not** auto-install
-project-level `requirements.txt` for inventory updates, so the SDK must be
+**not** contain the akeyless Python SDK, and AWX does **not** auto-install
+project-level `requirements.txt` for inventory updates. The SDK must be
 baked into the EE.
 
-This repo's `ee/` directory is a working ansible-builder v3 context:
+You have two options.
+
+**Option A (recommended) — use the published reference image.** This repo
+publishes a verified-working EE on GHCR:
+
+```
+ghcr.io/fahmy-kadiri-akl/akeyless-awx-ee:0.1.0
+```
+
+It is built on `quay.io/ansible/awx-ee:latest` and adds
+`akeyless.secrets_management`, `akeyless.awx_integration`, and the
+`akeyless` Python SDK. The package is public; pulls do not require
+authentication.
+
+**Option B — build your own.** For environments with private registries,
+custom bases, or internal supply-chain controls, this repo's `ee/`
+directory is a working ansible-builder v3 context:
 
 ```bash
 cd ee
@@ -32,20 +48,12 @@ ansible-builder build -t your-registry.example/akeyless-awx-ee:0.1.0 \
 docker push your-registry.example/akeyless-awx-ee:0.1.0
 ```
 
-The build installs:
-
-- `akeyless.secrets_management` from Galaxy
-- `akeyless.awx_integration` (this collection's tarball, supplied alongside)
-- the `akeyless` Python SDK
-
-If your customer ships their own EE, they can add the same three artifacts
-to their existing build pipeline.
-
 ## 2. Register the EE in AWX
 
-Settings -> Execution Environments -> Add. Image:
-`your-registry.example/akeyless-awx-ee:0.1.0`. Pull policy: `always` for
-prod, `missing` for first-time tests.
+Settings -> Execution Environments -> Add. Image: either
+`ghcr.io/fahmy-kadiri-akl/akeyless-awx-ee:0.1.0` (Option A) or whatever
+you pushed in Option B. Pull policy: `always` for prod, `missing` for
+first-time tests.
 
 ## 3. Create the Akeyless Custom Credential Type
 
