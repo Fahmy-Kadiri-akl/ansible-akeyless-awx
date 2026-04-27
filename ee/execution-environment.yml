@@ -14,9 +14,9 @@ additional_build_files:
     dest: configs
 additional_build_steps:
   prepend_final:
-    - LABEL org.opencontainers.image.source=https://github.com/Fahmy-Kadiri-akl/ansible-akeyless-awx
-    - LABEL org.opencontainers.image.description="Akeyless AWX/AAP integration EE: ansible-core + akeyless.secrets_management + akeyless.awx_integration + akeyless Python SDK"
-    - LABEL org.opencontainers.image.licenses=MIT
+    - "LABEL org.opencontainers.image.source=https://github.com/Fahmy-Kadiri-akl/ansible-akeyless-awx"
+    - "LABEL org.opencontainers.image.description=\"Akeyless AWX/AAP integration EE - ansible-core plus akeyless collections and Python SDK\""
+    - "LABEL org.opencontainers.image.licenses=MIT"
   prepend_base:
     - RUN ln -sf /usr/bin/python3.12 /usr/bin/python3
   append_galaxy:
