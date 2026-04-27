@@ -1,0 +1,19 @@
+---
+# Example playbook with ZERO Akeyless awareness.
+# Variables consumed below come from host_vars populated by the
+# akeyless.awx_integration.akeyless inventory plugin at sync time.
+- name: Example play that consumes Akeyless-sourced secrets
+  hosts: all
+  gather_facts: false
+  connection: local
+  tasks:
+    - name: Demonstrate variables are present
+      ansible.builtin.assert:
+        that:
+          - hostvars[inventory_hostname] | dict2items | selectattr('value','string') | list | length > 0
+        success_msg: Akeyless secrets reached the playbook as host_vars
+        fail_msg: No Akeyless-sourced host_vars found
+
+    - name: Show variable names (lengths only, never values)
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} has {{ hostvars[inventory_hostname].keys() | list | length }} vars"

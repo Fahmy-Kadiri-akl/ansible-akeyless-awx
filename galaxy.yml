@@ -1,0 +1,30 @@
+namespace: akeyless
+name: awx_integration
+version: 0.1.0
+readme: README.md
+authors:
+  - 'Fahmy Kadiri <fahmy@kadiri.ca>'
+description: >
+  AWX/AAP integration for Akeyless. Provides inventory and vars plugins that fetch
+  Akeyless secrets and inject them as Ansible variables, plus an AWX Custom Credential
+  Type so authentication lives at the platform level instead of inside playbooks.
+license:
+  - MIT
+tags:
+  - akeyless
+  - awx
+  - aap
+  - secrets
+  - vault
+  - security
+dependencies:
+  'akeyless.secrets_management': '>=1.0.0'
+repository: https://github.com/Fahmy-Kadiri-akl/ansible-akeyless-awx
+issues: https://github.com/Fahmy-Kadiri-akl/ansible-akeyless-awx/issues
+build_ignore:
+  - .git
+  - .github
+  - tests/integration/output
+  - test-fixtures
+  - ee
+  - '*.tar.gz'

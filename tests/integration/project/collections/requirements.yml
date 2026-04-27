@@ -1,0 +1,6 @@
+---
+collections:
+  - name: akeyless.secrets_management
+    version: ">=1.0.0"
+  - name: collections/local/akeyless-awx_integration-0.1.0.tar.gz
+    type: file

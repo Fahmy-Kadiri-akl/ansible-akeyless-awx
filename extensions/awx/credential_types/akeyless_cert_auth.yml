@@ -1,0 +1,54 @@
+# Akeyless Cert-Auth Credential Type for AWX/AAP
+#
+# Paste the 'inputs' and 'injectors' blocks below into AWX:
+#   System Administration -> Credential Types -> Add
+# (or import via the awx.awx.credential_type Ansible module).
+#
+# Once registered, admins create credential instances of this type and attach
+# them to inventory sources that use the akeyless.awx_integration.akeyless
+# inventory plugin. The plugin reads everything it needs from environment
+# variables and tempfile paths the injectors write at job-run time.
+# Playbooks consume the resulting host_vars with no Akeyless code.
+
+name: Akeyless (Cert Auth)
+description: Authenticate to Akeyless with a client certificate. Consumed by the akeyless.awx_integration.akeyless inventory plugin.
+kind: cloud
+
+inputs:
+  fields:
+    - id: akeyless_api_url
+      label: Akeyless API URL
+      type: string
+      default: https://api.akeyless.io
+      help_text: Cert auth must hit the Akeyless control plane (https://api.akeyless.io). Customer gateways typically do not pass cert-auth payloads through their ingress.
+    - id: access_id
+      label: Akeyless Access ID
+      type: string
+      help_text: The access ID of the cert auth method, e.g. p-XXXXXXXXXXXXXX
+    - id: cert_data
+      label: Client Certificate (PEM)
+      type: string
+      multiline: true
+      help_text: PEM-encoded client certificate signed by the CA the auth method trusts.
+    - id: key_data
+      label: Client Private Key (PEM)
+      type: string
+      multiline: true
+      secret: true
+      help_text: PEM-encoded private key matching the client certificate.
+  required:
+    - akeyless_api_url
+    - access_id
+    - cert_data
+    - key_data
+
+injectors:
+  env:
+    AKEYLESS_API_URL: '{% raw %}{{ akeyless_api_url }}{% endraw %}'
+    AKEYLESS_ACCESS_ID: '{% raw %}{{ access_id }}{% endraw %}'
+    AKEYLESS_ACCESS_TYPE: cert
+    AKEYLESS_CERT_FILE: '{% raw %}{{ tower.filename.cert }}{% endraw %}'
+    AKEYLESS_KEY_FILE: '{% raw %}{{ tower.filename.key }}{% endraw %}'
+  file:
+    template.cert: '{% raw %}{{ cert_data }}{% endraw %}'
+    template.key: '{% raw %}{{ key_data }}{% endraw %}'

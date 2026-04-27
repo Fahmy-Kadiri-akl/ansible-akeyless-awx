@@ -1,0 +1,166 @@
+---
+# Reference playbook that provisions an AWX instance with this collection's
+# Custom Credential Type, an Akeyless cert credential, an SCM project
+# pointing at a Git repo of inventory yamls, an inventory source attached to
+# the credential, and a job template. Reads all sensitive/customer values
+# from environment variables so it's safe to commit.
+#
+# Required environment variables:
+#   AWX_HOST          e.g. https://awx.example.com
+#   AWX_USER          AWX admin username
+#   AWX_PASS          AWX admin password (or token)
+#   AKEYLESS_API_URL  e.g. https://api.akeyless.io
+#   AKEYLESS_ACCESS_ID  e.g. p-XXXXXXXXXXXXXX
+#   AKEYLESS_CERT_PEM_PATH  path to client cert PEM file
+#   AKEYLESS_KEY_PEM_PATH   path to client private key PEM file
+#   EE_IMAGE          full image ref for your custom EE
+#   PROJECT_SCM_URL   Git URL the AWX project will sync from
+#   PROJECT_SCM_BRANCH (optional, default: main)
+
+- name: Provision AWX for Akeyless integration
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  collections:
+    - awx.awx
+  vars:
+    awx_host: "{{ lookup('env', 'AWX_HOST') }}"
+    awx_user: "{{ lookup('env', 'AWX_USER') | default('admin', true) }}"
+    awx_pass: "{{ lookup('env', 'AWX_PASS') }}"
+    awx_validate: "{{ (lookup('env', 'AWX_VALIDATE_CERTS') | default('true', true)) | bool }}"
+    ee_image: "{{ lookup('env', 'EE_IMAGE') }}"
+    cred_type_name: 'Akeyless (Cert Auth)'
+    cred_name: 'Akeyless'
+    inventory_name: 'Akeyless inventory'
+    project_name: 'Akeyless inventory sources'
+    template_name: 'Akeyless example'
+    project_scm_url: "{{ lookup('env', 'PROJECT_SCM_URL') }}"
+    project_scm_branch: "{{ lookup('env', 'PROJECT_SCM_BRANCH') | default('main', true) }}"
+    akeyless_api_url: "{{ lookup('env', 'AKEYLESS_API_URL') | default('https://api.akeyless.io', true) }}"
+    akeyless_access_id: "{{ lookup('env', 'AKEYLESS_ACCESS_ID') }}"
+    cert_pem: "{{ lookup('file', lookup('env','AKEYLESS_CERT_PEM_PATH')) }}"
+    key_pem:  "{{ lookup('file', lookup('env','AKEYLESS_KEY_PEM_PATH')) }}"
+
+  tasks:
+    - name: Define Akeyless cert-auth credential type
+      credential_type:
+        name: '{{ cred_type_name }}'
+        kind: cloud
+        inputs:
+          fields:
+            - id: akeyless_api_url
+              label: Akeyless API URL
+              type: string
+              default: https://api.akeyless.io
+            - id: access_id
+              label: Akeyless Access ID
+              type: string
+            - id: cert_data
+              label: Client Certificate (PEM)
+              type: string
+              multiline: true
+            - id: key_data
+              label: Client Private Key (PEM)
+              type: string
+              multiline: true
+              secret: true
+          required: [akeyless_api_url, access_id, cert_data, key_data]
+        injectors:
+          env:
+            AKEYLESS_API_URL: '{% raw %}{{ akeyless_api_url }}{% endraw %}'
+            AKEYLESS_ACCESS_ID: '{% raw %}{{ access_id }}{% endraw %}'
+            AKEYLESS_ACCESS_TYPE: cert
+            AKEYLESS_CERT_FILE: '{% raw %}{{ tower.filename.cert }}{% endraw %}'
+            AKEYLESS_KEY_FILE: '{% raw %}{{ tower.filename.key }}{% endraw %}'
+          file:
+            template.cert: '{% raw %}{{ cert_data }}{% endraw %}'
+            template.key: '{% raw %}{{ key_data }}{% endraw %}'
+        controller_host: '{{ awx_host }}'
+        controller_username: '{{ awx_user }}'
+        controller_password: '{{ awx_pass }}'
+        validate_certs: '{{ awx_validate }}'
+
+    - name: Register custom Execution Environment
+      execution_environment:
+        name: 'Akeyless EE'
+        image: '{{ ee_image }}'
+        pull: missing
+        controller_host: '{{ awx_host }}'
+        controller_username: '{{ awx_user }}'
+        controller_password: '{{ awx_pass }}'
+        validate_certs: '{{ awx_validate }}'
+
+    - name: Create credential
+      credential:
+        name: '{{ cred_name }}'
+        credential_type: '{{ cred_type_name }}'
+        organization: Default
+        inputs:
+          akeyless_api_url: '{{ akeyless_api_url }}'
+          access_id: '{{ akeyless_access_id }}'
+          cert_data: '{{ cert_pem }}'
+          key_data:  '{{ key_pem }}'
+        controller_host: '{{ awx_host }}'
+        controller_username: '{{ awx_user }}'
+        controller_password: '{{ awx_pass }}'
+        validate_certs: '{{ awx_validate }}'
+
+    - name: Create SCM project
+      project:
+        name: '{{ project_name }}'
+        scm_type: git
+        scm_url: '{{ project_scm_url }}'
+        scm_branch: '{{ project_scm_branch }}'
+        scm_update_on_launch: true
+        organization: Default
+        controller_host: '{{ awx_host }}'
+        controller_username: '{{ awx_user }}'
+        controller_password: '{{ awx_pass }}'
+        validate_certs: '{{ awx_validate }}'
+
+    - name: Sync project
+      project_update:
+        project: '{{ project_name }}'
+        wait: true
+        timeout: 120
+        controller_host: '{{ awx_host }}'
+        controller_username: '{{ awx_user }}'
+        controller_password: '{{ awx_pass }}'
+        validate_certs: '{{ awx_validate }}'
+
+    - name: Create inventory
+      inventory:
+        name: '{{ inventory_name }}'
+        organization: Default
+        controller_host: '{{ awx_host }}'
+        controller_username: '{{ awx_user }}'
+        controller_password: '{{ awx_pass }}'
+        validate_certs: '{{ awx_validate }}'
+
+    - name: Create inventory source pointing at the akeyless plugin
+      inventory_source:
+        name: 'Akeyless source'
+        inventory: '{{ inventory_name }}'
+        organization: Default
+        source: scm
+        source_project: '{{ project_name }}'
+        source_path: 'inventory.akeyless.yml'
+        credential: '{{ cred_name }}'
+        execution_environment: 'Akeyless EE'
+        update_on_launch: true
+        controller_host: '{{ awx_host }}'
+        controller_username: '{{ awx_user }}'
+        controller_password: '{{ awx_pass }}'
+        validate_certs: '{{ awx_validate }}'
+
+    - name: Create job template
+      job_template:
+        name: '{{ template_name }}'
+        playbook: 'example_playbook.yml'
+        project: '{{ project_name }}'
+        inventory: '{{ inventory_name }}'
+        execution_environment: 'Akeyless EE'
+        controller_host: '{{ awx_host }}'
+        controller_username: '{{ awx_user }}'
+        controller_password: '{{ awx_pass }}'
+        validate_certs: '{{ awx_validate }}'
