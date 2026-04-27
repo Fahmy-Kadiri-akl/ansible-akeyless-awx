@@ -20,10 +20,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Compute lowercase image name
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/akeyless-awx-ee" >> "$GITHUB_ENV"
+
       - name: Trivy scan ${{ matrix.tag }}
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/akeyless-awx-ee:${{ matrix.tag }}
+          image-ref: "${{ env.IMAGE }}:${{ matrix.tag }}"
           format: sarif
           output: trivy-${{ matrix.tag }}.sarif
           severity: "CRITICAL,HIGH,MEDIUM"
@@ -40,7 +43,7 @@ jobs:
       - name: Trivy table summary in job log
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/akeyless-awx-ee:${{ matrix.tag }}
+          image-ref: "${{ env.IMAGE }}:${{ matrix.tag }}"
           format: table
           severity: "CRITICAL,HIGH"
           ignore-unfixed: true
