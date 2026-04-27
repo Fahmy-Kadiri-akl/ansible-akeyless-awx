@@ -1,0 +1,47 @@
+name: Scan published EE image
+
+on:
+  schedule:
+    # Daily at 13:00 UTC — independent of build cadence
+    - cron: "0 13 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: [latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy scan ${{ matrix.tag }}
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/akeyless-awx-ee:${{ matrix.tag }}
+          format: sarif
+          output: trivy-${{ matrix.tag }}.sarif
+          severity: "CRITICAL,HIGH,MEDIUM"
+          ignore-unfixed: true
+          exit-code: "0"
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-${{ matrix.tag }}.sarif
+          category: ee-scan-${{ matrix.tag }}
+
+      - name: Trivy table summary in job log
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/akeyless-awx-ee:${{ matrix.tag }}
+          format: table
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+          exit-code: "0"

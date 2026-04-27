@@ -118,6 +118,28 @@ with a Custom Credential Type achieves the same end-state (platform-level
 auth, no playbook changes, dynamic secret pickup) without depending on the
 frozen upstream.
 
+## Maintenance and supply-chain hygiene
+
+This repository ships two GitHub Actions workflows (in
+.github/workflows/) that keep the published EE image fresh and
+visibly scanned.
+
+- ee-build.yml rebuilds ghcr.io/.../akeyless-awx-ee every Monday at
+  09:00 UTC (and on changes to ee/, plugins/, meta/, or galaxy.yml).
+  The build pulls the latest quay.io/ansible/awx-ee base, installs
+  the latest pinned dependencies, and pushes three tags:
+  :{version} (from galaxy.yml), :latest, and :weekly-YYYY-MM-DD.
+  After each push it runs Trivy and uploads the SARIF report to the
+  repository Security tab.
+- ee-scan.yml runs daily at 13:00 UTC and on manual trigger. Pulls
+  the published :latest image, scans it with Trivy, uploads SARIF
+  to the Security tab, and prints a CRITICAL/HIGH table to the job
+  log.
+
+Findings appear under Security -> Code scanning on the GitHub repo.
+Both workflows are non-blocking (exit-code: 0). To make scan failures
+a CI gate, change exit-code to 1 and pick a severity threshold.
+
 ## Versions and compatibility
 
 - Tested against AWX 24.6.1 with default `awx-ee` execution environment

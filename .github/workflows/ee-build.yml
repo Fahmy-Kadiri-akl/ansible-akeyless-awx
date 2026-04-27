@@ -1,0 +1,92 @@
+name: Build and publish EE image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ee/**"
+      - "plugins/**"
+      - "meta/**"
+      - "galaxy.yml"
+      - ".github/workflows/ee-build.yml"
+  schedule:
+    # Mondays 09:00 UTC — picks up base image + transitive pip updates
+    - cron: "0 9 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/akeyless-awx-ee
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ansible-core + ansible-builder
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "ansible-core>=2.16" "ansible-builder>=3.1" pyyaml
+
+      - name: Read collection version
+        id: meta
+        run: |
+          VERSION=$(python -c "import yaml; print(yaml.safe_load(open(\"galaxy.yml\"))[\"version\"])")
+          DATE=$(date -u +%Y-%m-%d)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+
+      - name: Build collection tarball
+        run: |
+          ansible-galaxy collection build --output-path . .
+          mv akeyless-awx_integration-*.tar.gz ee/akeyless-awx_integration.tar.gz
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build EE image
+        run: |
+          cd ee
+          ansible-builder build \
+            --tag "$IMAGE:${{ steps.meta.outputs.version }}" \
+            --tag "$IMAGE:latest" \
+            --tag "$IMAGE:weekly-${{ steps.meta.outputs.date }}" \
+            -f execution-environment.yml \
+            --container-runtime docker \
+            --verbosity 1
+
+      - name: Push image
+        run: |
+          docker push "$IMAGE:${{ steps.meta.outputs.version }}"
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:weekly-${{ steps.meta.outputs.date }}"
+
+      - name: Trivy scan of freshly built image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.IMAGE }}:weekly-${{ steps.meta.outputs.date }}"
+          format: sarif
+          output: trivy-build.sarif
+          severity: "CRITICAL,HIGH,MEDIUM"
+          ignore-unfixed: true
+          exit-code: "0"
+
+      - name: Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-build.sarif
+          category: ee-build
