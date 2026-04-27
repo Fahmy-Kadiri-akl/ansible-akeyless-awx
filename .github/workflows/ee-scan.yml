@@ -24,7 +24,7 @@ jobs:
         run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/akeyless-awx-ee" >> "$GITHUB_ENV"
 
       - name: Trivy scan ${{ matrix.tag }}
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: "${{ env.IMAGE }}:${{ matrix.tag }}"
           format: sarif
@@ -41,7 +41,7 @@ jobs:
           category: ee-scan-${{ matrix.tag }}
 
       - name: Trivy table summary in job log
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: "${{ env.IMAGE }}:${{ matrix.tag }}"
           format: table
