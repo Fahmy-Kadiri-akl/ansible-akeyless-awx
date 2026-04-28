@@ -1,0 +1,160 @@
+# Inventory Source Configuration
+
+The inventory plugin reads its configuration from a YAML file inside an AWX
+Project. This step covers:
+
+1. Writing the inventory YAML.
+2. Committing it to a Git repo and registering that repo as an AWX Project.
+3. Creating an Inventory and binding the YAML, the credential
+   (from [step 05](05-awx-credential-type.md)), and the EE
+   (from [step 03](03-execution-environment.md)) together as an Inventory
+   Source.
+
+## Step 1: write the inventory YAML
+
+> **Important — filename rule:** the plugin's `verify_file()` only accepts
+> files whose name ends with `akeyless.yml` or `akeyless.yaml`. Any other
+> filename is silently skipped by AWX.
+
+Two discovery modes are supported. They can be combined.
+
+### Path discovery (recommended)
+
+Auto-discover every static secret under a path prefix. Adding a new secret in
+Akeyless then requires no AWX or playbook change.
+
+```yaml
+# inventory.akeyless.yml
+plugin: akeyless.awx_integration.akeyless
+secret_path_prefix: /apps/prod
+hosts:
+  - app01.example.com
+  - app02.example.com
+default_group: prod_apps
+```
+
+A secret at `/apps/prod/db/password` becomes the variable `db_password` on
+every host listed under `hosts` (and on `default_group` if set).
+
+### Explicit name-to-var mapping
+
+Use this when you need a fixed naming contract independent of the Akeyless
+path:
+
+```yaml
+plugin: akeyless.awx_integration.akeyless
+secrets:
+  - name: /apps/prod/db_password
+    var: db_password
+  - name: /apps/prod/api_token
+    var: api_token
+hosts:
+  - app01.example.com
+```
+
+### Combined
+
+`secret_path_prefix` for bulk discovery, `secrets:` for fixed-name overrides:
+
+```yaml
+plugin: akeyless.awx_integration.akeyless
+secret_path_prefix: /apps/prod
+secrets:
+  - name: /apps/prod/legacy/db
+    var: legacy_db_password
+hosts:
+  - app01.example.com
+default_group: prod_apps
+```
+
+### All supported options
+
+| Option | Purpose |
+|---|---|
+| `plugin` | Always `akeyless.awx_integration.akeyless`. Required. |
+| `secret_path_prefix` | Akeyless path prefix to auto-discover under. |
+| `secrets` | Explicit `[{name, var}, ...]` mapping. |
+| `var_name_template` | How to derive variable names from discovered paths. Default `{relpath}`. Other placeholders: `{basename}` (last segment), `{fullname}` (full path). Non-identifier characters are replaced with `_`. |
+| `secret_types` | Akeyless item types to discover. Default `['static-secret']`. |
+| `hosts` | List of host names to attach variables to. |
+| `groups` | Mapping of `group_name: [host, ...]`. Variables are attached at the group level. |
+| `default_group` | Umbrella group containing every host/group created. Default `akeyless_managed`. |
+
+> **Do not** put `access_id`, `cert_file`, `key_file`, or `akeyless_api_url`
+> in this YAML. They are injected by the AWX credential at job-run time. If
+> you put them here you encourage users to commit cert paths into Git.
+
+## Step 2: commit and register the project
+
+### Commit the YAML
+
+Commit `inventory.akeyless.yml` to a Git repo at any path. Push.
+
+```bash
+git add inventory.akeyless.yml
+git commit -m "Add Akeyless inventory source for prod apps"
+git push
+```
+
+### Create the AWX Project
+
+Navigate: **Resources -> Projects -> Add**.
+
+| Field | Value |
+|---|---|
+| **Name** | `Akeyless inventory sources` (or any label) |
+| **Organization** | Same org as the credential |
+| **Source Control Type** | `Git` |
+| **Source Control URL** | The HTTPS URL of the repo |
+| **Source Control Branch/Tag/Commit** | `main` (or your branch) |
+| **Update Revision on Launch** | enabled (so AWX always uses the latest YAML) |
+| **Credential** | A Git credential, if the repo is private |
+
+Click **Save**. AWX runs an initial project sync.
+
+### Verify
+
+The project status is **Successful** within ~30 seconds.
+
+If it fails, click into the project, open the failed job, and read the SCM
+output. Most failures are SSH/HTTPS auth issues against the Git host, not
+Akeyless-related.
+
+## Step 3: create the inventory and inventory source
+
+### Create the Inventory
+
+Navigate: **Resources -> Inventories -> Add -> Inventory** (the regular
+kind, not "Smart Inventory").
+
+| Field | Value |
+|---|---|
+| **Name** | `akeyless-prod` |
+| **Organization** | Same org as before |
+
+Click **Save**.
+
+### Create the Inventory Source
+
+Open the inventory you just created. Click the **Sources** tab, then **Add**.
+
+| Field | Value |
+|---|---|
+| **Name** | `akeyless` |
+| **Source** | `Sourced from a Project` |
+| **Project** | The project from step 2 |
+| **Inventory file** | The YAML path inside the repo, e.g. `inventory.akeyless.yml` |
+| **Credential** | The credential from [step 05](05-awx-credential-type.md) |
+| **Execution Environment** | The EE from [step 03](03-execution-environment.md). Set this **on the source**, not on the inventory or as the system default — AWX uses the source's EE for inventory updates. |
+| **Update on launch** | enabled (so every job sees fresh secret values) |
+
+Click **Save**.
+
+> **Why "Update on launch"?** Without it, AWX uses the inventory it cached
+> the last time you manually clicked **Sync**. A secret rotated in Akeyless
+> after that sync will not reach the next job until you sync again. The cost
+> of enabling it is one extra sync per job launch, typically under 5 seconds.
+
+## Next steps
+
+- [First sync and test job](07-first-sync-and-job.md) — run the inventory sync, inspect the discovered host_vars, and run a job template that consumes one of them.
