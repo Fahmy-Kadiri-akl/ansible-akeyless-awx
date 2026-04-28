@@ -121,10 +121,39 @@ Click **Save**. AWX runs an initial project sync.
 
 ### Verify
 
-The project status is **Successful** within about 30 seconds.
+In the UI: **Resources -> Projects**, the project shows
+**Last Job Status: Successful** within about 30 seconds. Hover over
+the status to see the timestamp.
 
-If it fails, click into the project, open the failed job, and read the SCM
-output. Most failures are SSH/HTTPS auth issues against the Git host, not
+Or, via API:
+
+```bash
+PROJECT_ID=$(curl -sk -u "$AUTH" "$AWX/api/v2/projects/?name=Akeyless%20inventory%20sources" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["results"][0]["id"])')
+
+# Poll status until terminal
+while true; do
+  s=$(curl -sk -u "$AUTH" "$AWX/api/v2/projects/$PROJECT_ID/" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+  echo "  status=$s"
+  case "$s" in successful|failed|error) break;; esac
+  sleep 5
+done
+echo "PROJECT_ID=$PROJECT_ID"
+```
+
+Expected: `status=successful`. Save the `PROJECT_ID`; the inventory
+source in step 3 needs it.
+
+If it fails, fetch the SCM output the same way:
+
+```bash
+LAST_UPDATE=$(curl -sk -u "$AUTH" "$AWX/api/v2/projects/$PROJECT_ID/" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["summary_fields"]["last_job"]["id"])')
+curl -sk -u "$AUTH" "$AWX/api/v2/project_updates/$LAST_UPDATE/stdout/?format=txt" | tail -30
+```
+
+Most failures are SSH/HTTPS auth issues against the Git host, not
 Akeyless-related.
 
 ## Step 3: create the inventory and inventory source

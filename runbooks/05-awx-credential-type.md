@@ -159,7 +159,7 @@ JSON
 
 Each snippet prints `CT_ID=<n>` on success. If you see `CT_ID=` followed
 by an error blob (a JSON object with a message instead of a number),
-the most common cause is a name conflict — the credential type already
+the most common cause is a name conflict: the credential type already
 exists. List what's there with:
 
 ```bash
@@ -223,8 +223,21 @@ resolves from those env vars without any explicit lookup code.
 
 ### Verify
 
-The credential type appears under **Administration -> Credential Types**
-with **Kind: Cloud**.
+In the UI: open **Administration -> Credential Types**. The credential
+type you registered appears in the list with **Kind: Cloud**. Click
+into it and confirm the inputs and injectors look like the YAML you
+pasted.
+
+Or, via API:
+
+```bash
+curl -sk -u "$AUTH" "$AWX/api/v2/credential_types/?search=akeyless" \
+  | python3 -c 'import json,sys; [print(r["id"], r["name"], "kind="+r["kind"]) for r in json.load(sys.stdin)["results"]]'
+```
+
+Expected: one line per akeyless credential type you have registered,
+each showing `kind=cloud`. The id is the value to use as
+`CREDENTIAL_TYPE_ID` in step 2 below.
 
 ## Step 2: create a credential instance
 
@@ -242,9 +255,30 @@ is expected.
 
 ### Verify
 
-The credential appears under **Resources -> Credentials** with
-**Type = (the type you picked)**. Open it and confirm the non-secret
-fields are what you expect.
+In the UI: open **Resources -> Credentials**. The credential appears
+with **Type = (the type you picked)**. Open it and confirm the
+non-secret fields (URL, access ID) look right; secret fields are
+masked.
+
+Or, via API:
+
+```bash
+curl -sk -u "$AUTH" "$AWX/api/v2/credentials/?credential_type=$CT_ID" \
+  | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+for c in d["results"]:
+    print("id:", c["id"], " name:", c["name"])
+    for k, v in c["inputs"].items():
+        masked = isinstance(v, str) and v.startswith("$encrypted$")
+        shown = "<masked>" if masked else v
+        print(f"  {k} = {shown}")'
+```
+
+Expected: the credential listed once. The non-secret inputs (URL,
+access_id) print plainly; secrets show as `<masked>`. If `<masked>`
+appears for a field you expected to be plain, it means the credential
+type marked it `secret: true` correctly.
 
 To run multiple environments (prod, staging, dev) against different
 Akeyless roles, create one credential instance per environment. They
