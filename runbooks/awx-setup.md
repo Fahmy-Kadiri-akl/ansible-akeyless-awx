@@ -39,7 +39,7 @@ trace back to a missed prerequisite here.
 | Need | How to check |
 |---|---|
 | AWX or AAP admin access | Log in, see the Settings menu |
-| Akeyless SaaS API reachable from the AWX cluster | From any AWX host: `curl -fsS https://api.akeyless.io` returns a response. We are testing TLS reachability to the SaaS API; the response body itself is not relevant. |
+| Akeyless SaaS API reachable from the AWX cluster | From any AWX host: `curl -sI https://api.akeyless.io` returns HTTP headers (a 405 is normal — we are only testing TLS reachability to the SaaS API). |
 | Cert-auth method exists in Akeyless | Akeyless console, **Auth Methods**, filter by type=Certificate; the access ID looks like `p-XXXXXXXXXXXXXX` |
 | An access role grants read on the secret paths AWX will consume | Same role bound to the cert auth method; readable paths visible under **Items** |
 | A client cert + private key issued by the CA the cert-auth method trusts | Two PEM files in hand (cert, unencrypted key) |
@@ -55,27 +55,42 @@ returns 401." Catch it now.
 
 ### Endpoint terminology (read this first)
 
-Two Akeyless endpoints get confused in cert-auth setup:
+Two distinct Akeyless endpoints exist, and they are not interchangeable
+for cert auth:
 
 - **Akeyless SaaS API:** `https://api.akeyless.io`. The public Akeyless
-  service, hosted by Akeyless. Cert auth flows must target this URL.
-- **Customer gateway (self-hosted):** typically
-  `https://your-gateway.example.com:8000/api/v1`. The customer-deployed
-  Akeyless Gateway. Most customer gateway ingresses terminate TLS at the
-  edge and do not forward TLS client certs through to the gateway pod, so
-  cert-auth handshakes fail there. This is why the AWX credential type
-  defaults the URL to `https://api.akeyless.io`.
+  service, hosted by Akeyless. This is where cert-auth handshakes must
+  terminate.
+- **Customer gateway (self-hosted):** the customer-deployed Akeyless
+  Gateway, typically at `https://your-gateway.example.com:8000/api/v1`.
+  Most customer gateway ingresses terminate TLS at the edge and do not
+  forward TLS client certs through to the gateway pod, so cert-auth
+  handshakes fail there. This is why the AWX credential type defaults
+  the URL field to the SaaS endpoint.
 
-The akeyless CLI's `AKEYLESS_GATEWAY_URL` env var picks the backend.
-Despite the name, the value is either a SaaS or a gateway URL. For cert
-auth, set it to the SaaS URL.
+The akeyless CLI selects an endpoint in this order of precedence
+(verified against CLI 1.142.0; cert auth has no `--gateway-url` flag of
+its own, so the URL is determined entirely by env var + profile):
+
+1. `AKEYLESS_GATEWAY_URL` env var. If set, all calls route through it.
+2. The active profile's `gateway_url` field, stored in
+   `~/.akeyless/profiles/<profile>.toml`. Set or cleared via
+   `akeyless configure --gateway-url <url>` (use `""` to clear).
+3. Default: the Akeyless SaaS API.
+
+For cert-auth verification both 1 and 2 must be empty so the CLI reaches
+the SaaS API directly. Inspect the active profile with
+`cat ~/.akeyless/profiles/default.toml` (or whatever profile name you use)
+and confirm `gateway_url = ''`.
 
 ### Verify with the CLI
 
-From any machine that has the cert and key:
+From any machine that has the cert and key. The `env -u` clears any
+inherited `AKEYLESS_GATEWAY_URL` so the CLI falls back to the profile
+or SaaS default:
 
 ```bash
-AKEYLESS_GATEWAY_URL=https://api.akeyless.io akeyless auth \
+env -u AKEYLESS_GATEWAY_URL akeyless auth \
   --access-id p-XXXXXXXXXXXXXX \
   --access-type cert \
   --cert-file-name /path/to/client.crt \
@@ -86,11 +101,19 @@ AKEYLESS_GATEWAY_URL=https://api.akeyless.io akeyless auth \
 
 **If it fails:**
 
-- `unauthorized: certificate not allowed`: the cert was not issued by the
-  CA the auth method trusts, or it has expired.
-- TLS handshake errors / connection refused: `AKEYLESS_GATEWAY_URL` is
-  pointing at a customer gateway, not the SaaS API. Override it to
-  `https://api.akeyless.io` for this command.
+- `failed to read certificate: open <path>: no such file or directory`:
+  the path is wrong or the file is unreadable.
+- `failed to get credentials: failed to parse private key`: the key
+  PEM is malformed or encrypted.
+- `Unauthorized via gateway: https://...`: the CLI routed through a
+  customer gateway whose ingress is not forwarding TLS client certs
+  (the gateway URL is echoed back in the error). Either `AKEYLESS_GATEWAY_URL`
+  is still set, or the profile has a `gateway_url`. Re-run with
+  `env -u AKEYLESS_GATEWAY_URL` and clear the profile setting via
+  `akeyless configure --gateway-url ""`.
+- `unauthorized: certificate not allowed` / TLS handshake error from
+  the SaaS: the cert was not issued by the CA the auth method trusts,
+  or has expired.
 - `unauthorized: missing role`: the auth method is not bound to a role
   that grants read on the path AWX will consume.
 
@@ -362,19 +385,16 @@ shell. If that succeeds but the AWX sync still fails:
 Either the access role does not grant read on `secret_path_prefix`, or
 no secrets exist there.
 
-In the Akeyless console, open **Items** and filter by the
-`secret_path_prefix` value. Confirm that items exist under that path and
-that the access role bound to the cert auth method has read on them.
+In the Akeyless console, open **Items**, navigate to the
+`secret_path_prefix` value (or filter by it), and confirm two things:
 
-To verify from the CLI, authenticate as in [Step 1](#step-1-verify-akeyless-cert-auth-works) (which writes a
-token to the local profile), then:
+1. Items exist under that path.
+2. The access role bound to the cert auth method has read on them.
 
-```bash
-akeyless list-items --path /apps/prod --type static-secret
-```
-
-An empty result means the path is empty or the role does not allow
-listing it.
+If both are true and the sync still returns no host_vars, capture the
+inventory-update job log from AWX (Jobs -> the failed inventory sync
+-> Output) and look for the plugin's per-item log lines, which name
+exactly which secrets it tried to fetch and what response it got.
 
 ### Job picks up an old secret value after rotation in Akeyless
 
