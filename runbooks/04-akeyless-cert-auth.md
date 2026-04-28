@@ -183,6 +183,70 @@ Token: t-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 | `failed to validate token: 403 Forbidden` from the K8s API | The token-reviewer JWT used by the gateway does not have permission to call TokenReview. Bind the `system:auth-delegator` ClusterRole to the gateway's SA. |
 | `unauthorized: token signature invalid` | Wrong K8s auth config (the gateway is reviewing against a different cluster than the JWT belongs to), or the JWT is expired. |
 | `unauthorized: bound service accounts mismatch` | The JWT belongs to an SA outside the auth method's `bound_sa_names` allowlist. Add the SA or use a different one. |
+| `k8s auth name [...] not found` from the gateway | The k8s auth config has not been registered on the gateway. Run `akeyless gateway-create-k8s-auth-config` (see "Register the gateway k8s auth config" below). |
+| `Cannot read Kubernetes ServiceAccount token from /var/run/secrets/...` from the inventory plugin | The AWX inventory-update pod does not have its SA token mounted. AWX-operator deployments often disable that mount. Either paste a JWT into the **ServiceAccount Token** field on the credential, or override the AWX execution pod spec to mount the SA token. |
+| `400 Bad Request "access-id or email must be provided"` despite setting access_id | The k8s auth call hit the gateway's `/api/v1` legacy endpoint instead of `/api/v2`. The plugin auto-rewrites `/api/v1` to `/api/v2` when it sees `access_type=k8s`, so this only happens if the gateway URL has another path prefix or uses non-standard ports. Set the gateway URL to a form the plugin recognizes (`https://gw.example.com:8000`, `https://gw.example.com/api/v1`, or `https://gw.example.com/api/v2`). |
+
+### Register the gateway k8s auth config
+
+K8s auth requires both an Akeyless-side auth method **and** a corresponding
+gateway-side config that knows how to call TokenReview against your cluster.
+Without the gateway-side config, every authentication attempt fails with
+`k8s auth name [...] not found`.
+
+The minimal flow:
+
+1. Create a token-reviewer ServiceAccount with `system:auth-delegator`:
+
+   ```bash
+   kubectl create namespace akeyless-gateway-auth
+   kubectl -n akeyless-gateway-auth create serviceaccount akeyless-token-reviewer
+   kubectl create clusterrolebinding akeyless-token-reviewer \
+     --clusterrole=system:auth-delegator \
+     --serviceaccount=akeyless-gateway-auth:akeyless-token-reviewer
+   TR_TOKEN=$(kubectl -n akeyless-gateway-auth create token akeyless-token-reviewer --duration=87600h)
+   ```
+
+2. Capture the cluster API URL and CA cert in a form the gateway can use:
+
+   ```bash
+   APISERVER=https://kubernetes.default.svc.cluster.local
+   kubectl config view --minify --raw \
+     -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' \
+     | base64 -d > /tmp/cluster-ca.pem
+   CA_B64=$(base64 -w0 < /tmp/cluster-ca.pem)
+   ```
+
+3. Create the auth method on Akeyless and capture the returned `prv_key`:
+
+   ```bash
+   akeyless auth-method create k8s \
+     --name /k8s-auth/awx \
+     --json
+   ```
+
+   Save the returned `access_id` and `prv_key`. They cannot be retrieved
+   later without regenerating the keypair.
+
+4. Register the gateway k8s auth config using the prv_key as
+   `--signing-key`:
+
+   ```bash
+   akeyless gateway-create-k8s-auth-config \
+     --name awx \
+     --gateway-url https://your-gateway.example.com \
+     --access-id <access_id from step 3> \
+     --signing-key <prv_key from step 3> \
+     --k8s-host $APISERVER \
+     --k8s-ca-cert $CA_B64 \
+     --token-reviewer-jwt $TR_TOKEN
+   ```
+
+5. Bind the auth method to a role with `read,list` on the secret path
+   AWX will consume.
+
+After this setup, the CLI handshake above should succeed. Continue with
+the rest of the verification.
 
 ## Verify the token can actually fetch a secret (any auth method)
 

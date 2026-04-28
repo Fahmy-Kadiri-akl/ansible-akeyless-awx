@@ -297,7 +297,10 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         return out
 
     def _build_api_client(self, opts):
-        api_url = opts.get('akeyless_api_url') or 'https://api.akeyless.io'
+        if opts.get('access_type') == 'k8s' and opts.get('akeyless_gateway_url'):
+            api_url = self._normalize_gateway_url(opts['akeyless_gateway_url'])
+        else:
+            api_url = opts.get('akeyless_api_url') or 'https://api.akeyless.io'
         config = akeyless.Configuration(host=api_url)
         ca_bundle = self.get_option('ca_bundle')
         validate = self.get_option('validate_certs')
@@ -351,6 +354,18 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
                 'inventory-update pod has the SA token mounted at this path.'
                 % (path, e)
             )
+
+    def _normalize_gateway_url(self, url):
+        # The akeyless CLI uses /api/v1 on the gateway; the akeyless Python
+        # SDK (V2Api) uses /api/v2. Customers naturally configure their
+        # gateway URL with /api/v1 because that is what their CLI examples
+        # show. Translate so the SDK reaches the right endpoint.
+        url = url.rstrip('/')
+        if url.endswith('/api/v1'):
+            return url[:-len('/api/v1')] + '/api/v2'
+        if url.endswith('/api/v2'):
+            return url
+        return url + '/api/v2'
 
     def _read_file_b64(self, path):
         try:

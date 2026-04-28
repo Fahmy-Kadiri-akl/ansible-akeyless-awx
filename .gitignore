@@ -11,6 +11,8 @@ venv/
 ansible_collections/
 tests/output/
 ee/context-out/
+ee/context/
+ee/akeyless-awx_integration.tar.gz
 
 # Local Claude Code briefing file. Never commit.
 CLAUDE.md
