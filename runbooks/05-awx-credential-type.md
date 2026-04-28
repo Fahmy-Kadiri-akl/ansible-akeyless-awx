@@ -41,22 +41,39 @@ Click **Save**.
 
 ### Or, via API
 
+The AWX API expects `inputs` and `injectors` as JSON objects. The
+canonical files in this repo are YAML; convert them to JSON in one step
+and POST with `curl -d @file`. Pick the file that matches the
+credential type you want.
+
 ```bash
-curl -sk -u "<admin>:<pass>" \
+# Pick: akeyless_cert_auth.yml | akeyless_api_key.yml | akeyless_k8s_auth.yml
+YAML=extensions/awx/credential_types/akeyless_cert_auth.yml
+
+python3 -c "
+import yaml, json
+y = yaml.safe_load(open('${YAML}'))
+print(json.dumps({
+  'name': y['name'],
+  'description': y.get('description', ''),
+  'kind': y['kind'],
+  'inputs': y['inputs'],
+  'injectors': y['injectors'],
+}))
+" > /tmp/credtype.json
+
+curl -sk -u "admin:<password>" \
   -H 'Content-Type: application/json' \
   -X POST https://<awx-host>/api/v2/credential_types/ \
-  -d '{
-    "name": "<from YAML>",
-    "description": "<from YAML>",
-    "kind": "cloud",
-    "inputs": { /* paste the inputs block as JSON */ },
-    "injectors": { /* paste the injectors block as JSON */ }
-  }'
+  -d @/tmp/credtype.json
 ```
 
+Expected: HTTP 201 with the new credential type object (note the `id`
+for the credential-instance step that follows).
+
 A reference Ansible-based provisioning playbook is at
-`tests/integration/awx-setup.yml` (cert-auth flavor). The same pattern
-applies to the other two types.
+`tests/integration/awx-setup.yml` (cert-auth flavor). The same
+yaml-to-json pattern applies to the other two types.
 
 ### What the inputs declare (per type)
 
