@@ -64,12 +64,12 @@ graph TB
         direction TB
         AWX["AWX Controller"]
         subgraph "Inventory Sync (per launch)"
-            CRED["Custom Credential<br/>Akeyless (Cert Auth)"]
+            CRED["AWX Custom Credential<br/>cert / api-key / k8s"]
             INVYAML["inventory.akeyless.yml<br/>plugin: akeyless...<br/>secret_path_prefix: /apps/prod"]
             EE["Execution Environment<br/>akeyless-awx-ee<br/>(collection + SDK baked in)"]
             PLUGIN["Inventory Plugin<br/>akeyless.awx_integration.akeyless"]
             VARS["host_vars / group_vars"]
-            CRED -- "env vars +<br/>cert/key tempfiles" --> PLUGIN
+            CRED -- "AKEYLESS_* env vars<br/>(+ cert/key tempfiles<br/>for cert auth)" --> PLUGIN
             INVYAML --> PLUGIN
             EE --- PLUGIN
             PLUGIN --> VARS
@@ -80,18 +80,18 @@ graph TB
         VARS --> JT
     end
 
-    subgraph "Akeyless SaaS"
-        SAAS/Gateway["api.akeyless.io/GW-URL"]
-        Auth["Auth Method<br/>p-XXXXXXXXXXXXXX"]
-        ROLE["Access Role<br/>(read on /apps/prod/*)"]
-        ITEMS["Static Secrets<br/>/apps/prod/db/password<br/>/apps/prod/api/token<br/>..."]
-        SAAS --- CERTAUTH
-        CERTAUTH --- ROLE
+    subgraph "Akeyless"
+        ENDPOINT["Akeyless API endpoint<br/>SaaS (api.akeyless.io)<br/>or customer Gateway"]
+        AUTH["Auth Method<br/>cert / api-key / k8s<br/>access_id p-XXXXXXXXXXXXXX"]
+        ROLE["Access Role<br/>read on /apps/prod/*"]
+        ITEMS["Static Secrets<br/>/apps/prod/db_password<br/>/apps/prod/api_token<br/>..."]
+        ENDPOINT --- AUTH
+        AUTH --- ROLE
         ROLE --- ITEMS
     end
 
-    PLUGIN -- "TLS client cert auth" --> SAAS
-    SAAS -- "list-items +<br/>get-secret-value" --> PLUGIN
+    PLUGIN -- "auth handshake" --> ENDPOINT
+    ENDPOINT -- "list-items +<br/>get-secret-value" --> PLUGIN
 ```
 
 For the data-flow walkthrough that maps each arrow to a step, see
