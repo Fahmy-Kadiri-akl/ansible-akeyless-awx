@@ -12,7 +12,10 @@ ansible_collections/
 tests/output/
 ee/context-out/
 
-# Throwaway secrets and cert material — never commit
+# Local Claude Code briefing file. Never commit.
+CLAUDE.md
+
+# Throwaway secrets and cert material. Never commit.
 test-fixtures/
 *.key
 *.pem
