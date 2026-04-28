@@ -1,0 +1,46 @@
+# Akeyless API-Key Auth Credential Type for AWX/AAP
+#
+# Paste the 'inputs' and 'injectors' blocks below into AWX:
+#   System Administration -> Credential Types -> Add
+# (or import via the awx.awx.credential_type Ansible module).
+#
+# This credential type carries an Akeyless access ID + access key. Use it
+# for service-account-style automation where the AWX controller has a
+# pre-shared key registered with an Akeyless API-Key auth method.
+#
+# Injectors are written as plain Jinja (`{{ ... }}`). AWX evaluates them
+# itself at job-run time. Do NOT wrap them in `{% raw %}` markers; AWX
+# would store the literal text and the env vars would end up containing
+# `{{ access_key }}` instead of the real value.
+
+name: Akeyless (API Key)
+description: Authenticate to Akeyless with an access ID + access key. Consumed by the akeyless.awx_integration.akeyless inventory plugin.
+kind: cloud
+
+inputs:
+  fields:
+    - id: akeyless_api_url
+      label: Akeyless API URL
+      type: string
+      default: https://api.akeyless.io
+      help_text: Akeyless API endpoint. The default works for SaaS tenants.
+    - id: access_id
+      label: Akeyless Access ID
+      type: string
+      help_text: The access ID of the API-Key auth method, e.g. p-XXXXXXXXXXXXXX.
+    - id: access_key
+      label: Akeyless Access Key
+      type: string
+      secret: true
+      help_text: The access key paired with the access ID. Treat as a long-lived bearer secret; rotate on Akeyless when AWX is rebuilt.
+  required:
+    - akeyless_api_url
+    - access_id
+    - access_key
+
+injectors:
+  env:
+    AKEYLESS_API_URL: "{{ akeyless_api_url }}"
+    AKEYLESS_ACCESS_ID: "{{ access_id }}"
+    AKEYLESS_ACCESS_TYPE: api_key
+    AKEYLESS_ACCESS_KEY: "{{ access_key }}"

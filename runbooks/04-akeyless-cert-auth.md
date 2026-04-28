@@ -1,27 +1,40 @@
-# Akeyless Cert-Auth Verification
+# Akeyless Authentication Verification
 
-The most common failure mode in this guide is "cert auth doesn't actually
-work, but no error surfaces until the inventory plugin runs and returns
-401." Catch it now, with the CLI, before AWX is in the picture.
+The most common failure mode in this guide is "auth doesn't actually work,
+but no error surfaces until the inventory plugin runs and returns 401."
+Catch it now, with the CLI, before AWX is in the picture.
+
+The collection ships three Custom Credential Types covering three auth
+methods. Pick one and verify it works on its own before you wire it into
+AWX.
+
+| Auth method | Use it when | Credential Type |
+|---|---|---|
+| **Cert** | Long-lived TLS client cert + key issued by a CA the Akeyless auth method trusts. Works for any controller. | `Akeyless (Cert Auth)` |
+| **API key** | Pre-shared `access_id` + `access_key`. Simple, no PKI, but the key is a long-lived bearer secret. | `Akeyless (API Key)` |
+| **Kubernetes** | AWX runs in Kubernetes and an Akeyless customer gateway is reachable from the cluster. The pod's ServiceAccount JWT is the credential. | `Akeyless (Kubernetes Auth)` |
+
+The rest of this document walks through CLI verification for each. After
+verification, continue to [step 05](05-awx-credential-type.md) to register
+the matching credential type in AWX.
 
 ## Endpoint terminology (read this first)
 
-Two distinct Akeyless endpoints exist, and they are not interchangeable
-for cert auth.
+Two distinct Akeyless endpoints exist, and they are not interchangeable.
 
-| Endpoint | URL | Use for cert auth? |
+| Endpoint | URL | Used by |
 |---|---|---|
-| Akeyless SaaS API | `https://api.akeyless.io` | Yes. Cert-auth handshakes must terminate here. |
-| Customer gateway (self-hosted) | for example `https://your-gateway.example.com:8000/api/v1` | No. Most customer gateway ingresses terminate TLS at the edge and do not forward TLS client certs through to the gateway pod, so cert-auth handshakes fail there. |
+| Akeyless SaaS API | `https://api.akeyless.io` | All three auth methods. The handshake terminates here. |
+| Customer gateway (self-hosted) | for example `https://your-gateway.example.com:8000/api/v1` | k8s auth only. The gateway is what calls Kubernetes TokenReview. Most customer-gateway ingresses do **not** forward TLS client certs through to the gateway pod, so cert auth fails there. |
 
-The AWX credential type defaults to the SaaS endpoint for this reason. Do
-not change it to a gateway URL.
+The AWX cert-auth and API-key credential types default to the SaaS
+endpoint. The k8s credential type adds a separate field for the gateway
+URL.
 
 ## How the `akeyless` CLI picks an endpoint
 
-Verified against `akeyless` CLI 1.142.0. Cert auth has no `--gateway-url`
-flag of its own, so the URL is determined entirely by env var and profile,
-in this order:
+Verified against CLI 1.139+. The URL is determined by env var and
+profile, in this order:
 
 1. `AKEYLESS_GATEWAY_URL` env var. If set, all calls route through it.
 2. The active profile's `gateway_url` field, stored in
@@ -29,10 +42,12 @@ in this order:
    `akeyless configure --gateway-url <url>` (use `""` to clear).
 3. Default: the Akeyless SaaS API.
 
-For cert-auth verification, both 1 and 2 must point at the Akeyless
-SaaS API. They can be empty (the CLI defaults to the SaaS API in that
-case) or explicitly set to `https://api.akeyless.io`. They must NOT
-point at a customer gateway URL.
+For **cert** and **API-key** verification, both 1 and 2 must point at the
+SaaS API. Empty (the CLI defaults to the SaaS API) or explicitly
+`https://api.akeyless.io` both work; a customer gateway URL does not.
+
+For **k8s** verification, set 1 or 2 to the customer gateway URL. K8s
+auth is gateway-mediated.
 
 ### Inspect the active profile
 
@@ -40,8 +55,8 @@ point at a customer gateway URL.
 cat ~/.akeyless/profiles/default.toml
 ```
 
-Expected output (the file uses TOML with a `["default"]` section
-header; only the `gateway_url` line matters here):
+Expected output (TOML with a `["default"]` section header; only the
+`gateway_url` line matters):
 
 ```toml
 ["default"]
@@ -56,16 +71,13 @@ header; only the `gateway_url` line matters here):
   access_key = '...'
 ```
 
-`gateway_url = ''` and `gateway_url = 'https://api.akeyless.io'` both
-work for cert auth. If the line is set to anything that looks like a
-customer gateway (for example `https://your-gw:8000/api/v1`), clear
-it before continuing:
+To clear the profile gateway:
 
 ```bash
 akeyless configure --gateway-url ""
 ```
 
-## Verify with the CLI
+## Cert auth: verify with the CLI
 
 From any machine that has the cert and key. The `env -u` clears any
 inherited `AKEYLESS_GATEWAY_URL` so the CLI falls back to the profile or
@@ -86,11 +98,93 @@ Authentication succeeded.
 Token: t-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-The presence of a `t-...` token is the only signal that cert auth works
-end to end. If you append `--json` to the command, the same token is
-returned as `{"token":"t-..."}` for easier scripting.
+### Cert-auth failure modes
 
-### Verify the token can actually fetch a secret
+| Error | Diagnosis |
+|---|---|
+| `failed to read certificate: open <path>: no such file or directory` | The path is wrong or the file is unreadable. |
+| `failed to get credentials: failed to parse private key` | The key PEM is malformed or encrypted. Re-export an unencrypted key. |
+| `Unauthorized via gateway: https://...` | The CLI routed through a customer gateway whose ingress is not forwarding TLS client certs. Re-run with `env -u AKEYLESS_GATEWAY_URL` and clear the profile setting. |
+| `unauthorized: certificate not allowed` or TLS handshake error from the SaaS | The cert was not issued by the CA the auth method trusts, or the cert has expired. |
+| `unauthorized: missing role` | The auth method is not bound to a role that grants `read` on the path AWX will consume. |
+
+## API-key auth: verify with the CLI
+
+```bash
+env -u AKEYLESS_GATEWAY_URL akeyless auth \
+  --access-id p-XXXXXXXXXXXXXX \
+  --access-type access_key \
+  --access-key <ACCESS_KEY>
+```
+
+Expected output:
+
+```
+Authentication succeeded.
+Token: t-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### API-key failure modes
+
+| Error | Diagnosis |
+|---|---|
+| `unauthorized: invalid access key` | The access ID and access key do not match. Re-copy the access key from the Akeyless console. |
+| `unauthorized: access denied` | The auth method is disabled or the source IP is outside the allowed CIDR. Check the auth method config. |
+| `unauthorized: missing role` | The auth method has no role association, or the role does not grant the operation you need. |
+
+> API keys are long-lived bearer secrets. Treat them like passwords:
+> rotate on Akeyless when AWX is rebuilt or when the operator who created
+> the credential leaves. Cert auth is preferable when you have CA
+> infrastructure.
+
+## Kubernetes auth: verify with the CLI
+
+K8s auth assumes:
+
+1. The customer has deployed an Akeyless gateway and given it
+   permissions to call Kubernetes TokenReview against the cluster.
+2. An Akeyless K8s auth method is configured, with the cluster
+   registered as a K8s auth config.
+3. A role is associated with the auth method and grants `read` on the
+   intended secret path prefix.
+
+Get a ServiceAccount JWT from a pod whose SA is bound to a role you
+expect Akeyless to recognize:
+
+```bash
+kubectl exec -n <namespace> <pod-name> -- \
+  cat /var/run/secrets/kubernetes.io/serviceaccount/token
+```
+
+Then run the handshake against the customer gateway. K8s auth requires
+`AKEYLESS_GATEWAY_URL` to be set:
+
+```bash
+AKEYLESS_GATEWAY_URL=https://your-gateway.example.com:8000/api/v1 \
+  akeyless auth \
+    --access-id p-XXXXXXXXXXXXXX \
+    --access-type k8s \
+    --k8s-auth-config-name <CONFIG_NAME> \
+    --k8s-service-account-token <JWT>
+```
+
+Expected output:
+
+```
+Authentication succeeded.
+Token: t-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### K8s-auth failure modes
+
+| Error | Diagnosis |
+|---|---|
+| `failed to validate token: connection refused` to the K8s API | The gateway cannot reach the cluster API. Check gateway egress and any authorized-networks rules on the cluster. |
+| `failed to validate token: 403 Forbidden` from the K8s API | The token-reviewer JWT used by the gateway does not have permission to call TokenReview. Bind the `system:auth-delegator` ClusterRole to the gateway's SA. |
+| `unauthorized: token signature invalid` | Wrong K8s auth config (the gateway is reviewing against a different cluster than the JWT belongs to), or the JWT is expired. |
+| `unauthorized: bound service accounts mismatch` | The JWT belongs to an SA outside the auth method's `bound_sa_names` allowlist. Add the SA or use a different one. |
+
+## Verify the token can actually fetch a secret (any auth method)
 
 A token-only success does not prove the role grants what AWX needs. List
 one secret under your intended `secret_path_prefix`:
@@ -117,20 +211,10 @@ If the items list is empty but you know secrets exist, the role bound to
 the auth method does not grant `list` and `read` on `/apps/prod`. Fix the
 role before continuing.
 
-## Failure modes
-
-| Error | Diagnosis |
-|---|---|
-| `failed to read certificate: open <path>: no such file or directory` | The path is wrong or the file is unreadable. |
-| `failed to get credentials: failed to parse private key` | The key PEM is malformed or encrypted. Re-export an unencrypted key. |
-| `Unauthorized via gateway: https://...` | The CLI routed through a customer gateway whose ingress is not forwarding TLS client certs (the gateway URL is echoed back in the error). Either `AKEYLESS_GATEWAY_URL` is still set or the profile has a `gateway_url`. Re-run with `env -u AKEYLESS_GATEWAY_URL` and clear the profile setting. |
-| `unauthorized: certificate not allowed` or TLS handshake error from the SaaS | The cert was not issued by the CA the auth method trusts, or the cert has expired. |
-| `unauthorized: missing role` | The auth method is not bound to a role that grants `read` on the path AWX will consume. |
-
-Resolve any failure here before continuing. Do not try to debug cert auth
-once it is buried inside an AWX inventory sync log. The AWX surface only
-shows you a 401, not which of the above caused it.
+Resolve any failure here before continuing. Do not try to debug auth once
+it is buried inside an AWX inventory sync log; the AWX surface only shows
+a 401, not which of the above caused it.
 
 ## Next steps
 
-- [AWX Custom Credential Type](05-awx-credential-type.md). Register the credential type and create a credential of that type using the cert and key you just verified.
+- [AWX Custom Credential Type](05-awx-credential-type.md). Register the credential type and create a credential of that type using the verified credentials.
