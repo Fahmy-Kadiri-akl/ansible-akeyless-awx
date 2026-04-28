@@ -41,39 +41,138 @@ Click **Save**.
 
 ### Or, via API
 
-The AWX API expects `inputs` and `injectors` as JSON objects. The
-canonical files in this repo are YAML; convert them to JSON in one step
-and POST with `curl -d @file`. Pick the file that matches the
-credential type you want.
+You only need to provide two things:
+
+| Variable | What it is | Example |
+|---|---|---|
+| `AWX` | Your AWX base URL. | `https://ansible.example.com` |
+| `AUTH` | `admin:<password>` for the AWX admin (HTTP basic). | `admin:hunter2` |
+
+Pick the snippet that matches the credential type you want. Each is
+self-contained, requires no external tools, and prints back the new
+credential type's `id`. Save that id; step 2 below needs it.
+
+**Akeyless (Cert Auth)**:
 
 ```bash
-# Pick: akeyless_cert_auth.yml | akeyless_api_key.yml | akeyless_k8s_auth.yml
-YAML=extensions/awx/credential_types/akeyless_cert_auth.yml
+AWX=https://ansible.example.com
+AUTH=admin:hunter2
 
-python3 -c "
-import yaml, json
-y = yaml.safe_load(open('${YAML}'))
-print(json.dumps({
-  'name': y['name'],
-  'description': y.get('description', ''),
-  'kind': y['kind'],
-  'inputs': y['inputs'],
-  'injectors': y['injectors'],
-}))
-" > /tmp/credtype.json
-
-curl -sk -u "admin:<password>" \
-  -H 'Content-Type: application/json' \
-  -X POST https://<awx-host>/api/v2/credential_types/ \
-  -d @/tmp/credtype.json
+curl -sk -u "$AUTH" -H 'Content-Type: application/json' \
+  -X POST "$AWX/api/v2/credential_types/" --data @- <<'JSON' \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); print("CT_ID=" + str(d.get("id") or d))'
+{
+  "name": "Akeyless (Cert Auth)",
+  "description": "Authenticate to Akeyless with a client certificate.",
+  "kind": "cloud",
+  "inputs": {
+    "fields": [
+      {"id": "akeyless_api_url", "label": "Akeyless API URL", "type": "string", "default": "https://api.akeyless.io"},
+      {"id": "access_id",        "label": "Akeyless Access ID", "type": "string"},
+      {"id": "cert_data",        "label": "Client Certificate (PEM)", "type": "string", "multiline": true},
+      {"id": "key_data",         "label": "Client Private Key (PEM)", "type": "string", "multiline": true, "secret": true}
+    ],
+    "required": ["akeyless_api_url", "access_id", "cert_data", "key_data"]
+  },
+  "injectors": {
+    "env": {
+      "AKEYLESS_API_URL":     "{{ akeyless_api_url }}",
+      "AKEYLESS_ACCESS_ID":   "{{ access_id }}",
+      "AKEYLESS_ACCESS_TYPE": "cert",
+      "AKEYLESS_CERT_FILE":   "{{ tower.filename.cert }}",
+      "AKEYLESS_KEY_FILE":    "{{ tower.filename.key }}"
+    },
+    "file": {
+      "template.cert": "{{ cert_data }}",
+      "template.key":  "{{ key_data }}"
+    }
+  }
+}
+JSON
 ```
 
-Expected: HTTP 201 with the new credential type object (note the `id`
-for the credential-instance step that follows).
+**Akeyless (API Key)**:
+
+```bash
+curl -sk -u "$AUTH" -H 'Content-Type: application/json' \
+  -X POST "$AWX/api/v2/credential_types/" --data @- <<'JSON' \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); print("CT_ID=" + str(d.get("id") or d))'
+{
+  "name": "Akeyless (API Key)",
+  "description": "Authenticate to Akeyless with an access ID + access key.",
+  "kind": "cloud",
+  "inputs": {
+    "fields": [
+      {"id": "akeyless_api_url", "label": "Akeyless API URL", "type": "string", "default": "https://api.akeyless.io"},
+      {"id": "access_id",        "label": "Akeyless Access ID", "type": "string"},
+      {"id": "access_key",       "label": "Akeyless Access Key", "type": "string", "secret": true}
+    ],
+    "required": ["akeyless_api_url", "access_id", "access_key"]
+  },
+  "injectors": {
+    "env": {
+      "AKEYLESS_API_URL":     "{{ akeyless_api_url }}",
+      "AKEYLESS_ACCESS_ID":   "{{ access_id }}",
+      "AKEYLESS_ACCESS_TYPE": "api_key",
+      "AKEYLESS_ACCESS_KEY":  "{{ access_key }}"
+    }
+  }
+}
+JSON
+```
+
+**Akeyless (Kubernetes Auth)**:
+
+```bash
+curl -sk -u "$AUTH" -H 'Content-Type: application/json' \
+  -X POST "$AWX/api/v2/credential_types/" --data @- <<'JSON' \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin); print("CT_ID=" + str(d.get("id") or d))'
+{
+  "name": "Akeyless (Kubernetes Auth)",
+  "description": "Authenticate to Akeyless with a Kubernetes ServiceAccount token.",
+  "kind": "cloud",
+  "inputs": {
+    "fields": [
+      {"id": "akeyless_api_url",         "label": "Akeyless API URL", "type": "string", "default": "https://api.akeyless.io"},
+      {"id": "akeyless_gateway_url",     "label": "Akeyless Gateway URL", "type": "string"},
+      {"id": "access_id",                "label": "Akeyless Access ID", "type": "string"},
+      {"id": "k8s_auth_config_name",     "label": "K8s Auth Config Name", "type": "string"},
+      {"id": "k8s_service_account_token","label": "ServiceAccount Token (optional)", "type": "string", "multiline": true, "secret": true},
+      {"id": "validate_certs",           "label": "Validate Gateway TLS Certificate", "type": "boolean", "default": true}
+    ],
+    "required": ["akeyless_api_url", "akeyless_gateway_url", "access_id", "k8s_auth_config_name"]
+  },
+  "injectors": {
+    "env": {
+      "AKEYLESS_API_URL":              "{{ akeyless_api_url }}",
+      "AKEYLESS_GATEWAY_URL":          "{{ akeyless_gateway_url }}",
+      "AKEYLESS_ACCESS_ID":            "{{ access_id }}",
+      "AKEYLESS_ACCESS_TYPE":          "k8s",
+      "AKEYLESS_K8S_AUTH_CONFIG_NAME": "{{ k8s_auth_config_name }}",
+      "AKEYLESS_K8S_SA_TOKEN":         "{{ k8s_service_account_token | default('') }}",
+      "AKEYLESS_VALIDATE_CERTS":       "{{ validate_certs | default(true) | string | lower }}"
+    }
+  }
+}
+JSON
+```
+
+Each snippet prints `CT_ID=<n>` on success. If you see `CT_ID=` followed
+by an error blob (a JSON object with a message instead of a number),
+the most common cause is a name conflict — the credential type already
+exists. List what's there with:
+
+```bash
+curl -sk -u "$AUTH" "$AWX/api/v2/credential_types/?search=akeyless" \
+  | python3 -c 'import json,sys; [print(r["id"], r["name"]) for r in json.load(sys.stdin)["results"]]'
+```
+
+Reuse the existing `id` rather than recreating.
 
 A reference Ansible-based provisioning playbook is at
-`tests/integration/awx-setup.yml` (cert-auth flavor). The same
-yaml-to-json pattern applies to the other two types.
+`tests/integration/awx-setup.yml` (cert-auth flavor). It uses
+`awx.awx.credential_type` instead of curl and works equally well if
+you prefer Ansible-driven provisioning.
 
 ### What the inputs declare (per type)
 
