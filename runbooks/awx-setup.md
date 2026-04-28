@@ -39,7 +39,7 @@ trace back to a missed prerequisite here.
 | Need | How to check |
 |---|---|
 | AWX or AAP admin access | Log in, see the Settings menu |
-| Akeyless reachable from the AWX cluster | From any AWX host: `curl -sI https://api.akeyless.io/auth` returns 200 or 405 |
+| Akeyless SaaS API reachable from the AWX cluster | From any AWX host: `curl -fsS https://api.akeyless.io` returns a response. We are testing TLS reachability to the SaaS API; the response body itself is not relevant. |
 | Cert-auth method exists in Akeyless | Akeyless console, **Auth Methods**, filter by type=Certificate; the access ID looks like `p-XXXXXXXXXXXXXX` |
 | An access role grants read on the secret paths AWX will consume | Same role bound to the cert auth method; readable paths visible under **Items** |
 | A client cert + private key issued by the CA the cert-auth method trusts | Two PEM files in hand (cert, unencrypted key) |
@@ -53,15 +53,33 @@ The most common failure mode in this whole runbook is "cert auth doesn't
 actually work, but no error surfaces until the inventory plugin runs and
 returns 401." Catch it now.
 
-From any machine that has the cert + key, using the akeyless CLI:
+### Endpoint terminology (read this first)
+
+Two Akeyless endpoints get confused in cert-auth setup:
+
+- **Akeyless SaaS API:** `https://api.akeyless.io`. The public Akeyless
+  service, hosted by Akeyless. Cert auth flows must target this URL.
+- **Customer gateway (self-hosted):** typically
+  `https://your-gateway.example.com:8000/api/v1`. The customer-deployed
+  Akeyless Gateway. Most customer gateway ingresses terminate TLS at the
+  edge and do not forward TLS client certs through to the gateway pod, so
+  cert-auth handshakes fail there. This is why the AWX credential type
+  defaults the URL to `https://api.akeyless.io`.
+
+The akeyless CLI's `AKEYLESS_GATEWAY_URL` env var picks the backend.
+Despite the name, the value is either a SaaS or a gateway URL. For cert
+auth, set it to the SaaS URL.
+
+### Verify with the CLI
+
+From any machine that has the cert and key:
 
 ```bash
-akeyless auth \
+AKEYLESS_GATEWAY_URL=https://api.akeyless.io akeyless auth \
   --access-id p-XXXXXXXXXXXXXX \
   --access-type cert \
-  --cert-file /path/to/client.crt \
-  --key-file /path/to/client.key \
-  --gateway-url https://api.akeyless.io
+  --cert-file-name /path/to/client.crt \
+  --key-file-name /path/to/client.key
 ```
 
 **Expected:** prints a token starting with `t-`.
@@ -70,10 +88,9 @@ akeyless auth \
 
 - `unauthorized: certificate not allowed`: the cert was not issued by the
   CA the auth method trusts, or it has expired.
-- TLS handshake errors / connection refused: you are pointing at a
-  customer gateway. Cert auth must hit the Akeyless control plane at
-  `https://api.akeyless.io`. Customer gateway ingresses typically do not
-  forward the cert payload through.
+- TLS handshake errors / connection refused: `AKEYLESS_GATEWAY_URL` is
+  pointing at a customer gateway, not the SaaS API. Override it to
+  `https://api.akeyless.io` for this command.
 - `unauthorized: missing role`: the auth method is not bound to a role
   that grants read on the path AWX will consume.
 
@@ -157,9 +174,11 @@ The source YAML is at
 
 The four user-facing fields the type defines:
 
-- **Akeyless API URL** (default `https://api.akeyless.io`). Cert auth must
-  hit the control plane; do not change this unless you have explicitly
-  verified your gateway ingress passes cert payloads through.
+- **Akeyless API URL** (default `https://api.akeyless.io`). This is the
+  Akeyless SaaS API. Do not change it to a customer gateway URL unless
+  you have verified that your gateway ingress passes TLS client cert
+  payloads through to the gateway pod. (Most do not. See [Step 1](#step-1-verify-akeyless-cert-auth-works) for the
+  endpoint distinction.)
 - **Akeyless Access ID** (e.g. `p-XXXXXXXXXXXXXX`).
 - **Client Certificate (PEM)**, multiline.
 - **Client Private Key (PEM)**, multiline, marked secret.
@@ -341,19 +360,20 @@ shell. If that succeeds but the AWX sync still fails:
 ### Inventory sync succeeds but no host_vars show up
 
 Either the access role does not grant read on `secret_path_prefix`, or
-no secrets exist there. From a shell with the cert:
+no secrets exist there.
+
+In the Akeyless console, open **Items** and filter by the
+`secret_path_prefix` value. Confirm that items exist under that path and
+that the access role bound to the cert auth method has read on them.
+
+To verify from the CLI, authenticate as in [Step 1](#step-1-verify-akeyless-cert-auth-works) (which writes a
+token to the local profile), then:
 
 ```bash
-akeyless list-items \
-  --path /apps/prod \
-  --type static-secret \
-  --access-id p-XXXXXXXXXXXXXX \
-  --access-type cert \
-  --cert-file client.crt \
-  --key-file client.key
+akeyless list-items --path /apps/prod --type static-secret
 ```
 
-If this returns nothing, the path is empty or the role does not allow
+An empty result means the path is empty or the role does not allow
 listing it.
 
 ### Job picks up an old secret value after rotation in Akeyless
@@ -362,11 +382,14 @@ listing it.
 using a cached sync. Enable it, or sync the source manually before
 launching the job.
 
-### Cert auth must hit Akeyless control plane
+### Cert auth fails because the credential points at a customer gateway
 
-The credential has a customer gateway URL in **Akeyless API URL**. Cert
-auth payloads do not pass through gateway ingresses by default. Switch
-the URL to `https://api.akeyless.io`.
+The credential has a customer gateway URL (typically
+`https://your-gw:8000/api/v1`) in **Akeyless API URL**. Customer gateway
+ingresses do not pass TLS client cert payloads through by default.
+Switch the URL to the SaaS API at `https://api.akeyless.io`. See
+[Step 1](#step-1-verify-akeyless-cert-auth-works) for the endpoint
+distinction.
 
 ### Project sync fails with "inventory file not found"
 
