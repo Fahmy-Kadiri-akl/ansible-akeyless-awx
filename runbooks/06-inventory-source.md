@@ -166,40 +166,50 @@ Click **Save**.
 
 ### Or, via API
 
+Set shell variables once, then run each call:
+
 ```bash
+AWX=https://<awx-host>
+AUTH="admin:<password>"
+ORG_ID=1                # from /api/v2/organizations/?name=Default
+PROJECT_ID=...          # from step 2 above
+CREDENTIAL_ID=...       # from step 05
+EE_ID=...               # from step 03
+
 # Create the inventory
-curl -sk -u "<admin>:<pass>" \
-  -H 'Content-Type: application/json' \
-  -X POST https://<awx-host>/api/v2/inventories/ \
-  -d '{ "name": "akeyless-prod", "organization": <org-id> }'
-# -> note the returned id, call it INV_ID
+INV_ID=$(curl -sk -u "$AUTH" -H 'Content-Type: application/json' \
+  -X POST "$AWX/api/v2/inventories/" \
+  -d "{\"name\":\"akeyless-prod\",\"organization\":$ORG_ID}" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+echo "INV_ID=$INV_ID"
 
 # Create the inventory source bound to project, credential, and EE
-curl -sk -u "<admin>:<pass>" \
-  -H 'Content-Type: application/json' \
-  -X POST https://<awx-host>/api/v2/inventory_sources/ \
-  -d '{
-    "name": "akeyless",
-    "inventory": <INV_ID>,
-    "source": "scm",
-    "source_project": <PROJECT_ID>,
-    "source_path": "examples/inventory.akeyless.yml",
-    "credential": <CREDENTIAL_ID>,
-    "execution_environment": <EE_ID>,
-    "update_on_launch": true,
-    "overwrite": true,
-    "overwrite_vars": true
-  }'
+SRC_ID=$(curl -sk -u "$AUTH" -H 'Content-Type: application/json' \
+  -X POST "$AWX/api/v2/inventory_sources/" \
+  -d "{
+    \"name\":\"akeyless\",
+    \"inventory\":$INV_ID,
+    \"source\":\"scm\",
+    \"source_project\":$PROJECT_ID,
+    \"source_path\":\"examples/inventory.akeyless.yml\",
+    \"credential\":$CREDENTIAL_ID,
+    \"execution_environment\":$EE_ID,
+    \"update_on_launch\":true,
+    \"overwrite\":true,
+    \"overwrite_vars\":true
+  }" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+echo "SRC_ID=$SRC_ID"
 ```
 
-If `credential` is silently ignored on create (some AWX versions),
-attach it after the fact:
+Some AWX versions ignore the `credential` field on inventory-source
+create. If `/api/v2/inventory_sources/$SRC_ID/credentials/` returns an
+empty list afterwards, attach the credential explicitly:
 
 ```bash
-curl -sk -u "<admin>:<pass>" \
-  -H 'Content-Type: application/json' \
-  -X POST https://<awx-host>/api/v2/inventory_sources/<id>/credentials/ \
-  -d '{ "id": <CREDENTIAL_ID> }'
+curl -sk -u "$AUTH" -H 'Content-Type: application/json' \
+  -X POST "$AWX/api/v2/inventory_sources/$SRC_ID/credentials/" \
+  -d "{\"id\":$CREDENTIAL_ID}"
 ```
 
 > **Why "Update on launch"?** Without it, AWX uses the inventory it cached
