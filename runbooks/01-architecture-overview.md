@@ -29,12 +29,12 @@ graph TB
         direction TB
         AWX["AWX Controller"]
         subgraph "Inventory Sync (per launch)"
-            CRED["Custom Credential<br/>Akeyless (Cert Auth)"]
+            CRED["AWX Custom Credential<br/>cert / api-key / k8s"]
             INVYAML["inventory.akeyless.yml<br/>plugin: akeyless...<br/>secret_path_prefix: /apps/prod"]
             EE["Execution Environment<br/>akeyless-awx-ee<br/>(collection + SDK baked in)"]
             PLUGIN["Inventory Plugin<br/>akeyless.awx_integration.akeyless"]
             VARS["host_vars / group_vars"]
-            CRED -- "env vars +<br/>cert/key tempfiles" --> PLUGIN
+            CRED -- "AKEYLESS_* env vars<br/>(+ cert/key tempfiles<br/>for cert auth)" --> PLUGIN
             INVYAML --> PLUGIN
             EE --- PLUGIN
             PLUGIN --> VARS
@@ -45,19 +45,32 @@ graph TB
         VARS --> JT
     end
 
-    subgraph "Akeyless SaaS"
-        SAAS["api.akeyless.io"]
-        CERTAUTH["Cert Auth Method<br/>p-XXXXXXXXXXXXXX"]
-        ROLE["Access Role<br/>(read on /apps/prod/*)"]
-        ITEMS["Static Secrets<br/>/apps/prod/db/password<br/>/apps/prod/api/token<br/>..."]
-        SAAS --- CERTAUTH
-        CERTAUTH --- ROLE
+    subgraph "Akeyless"
+        ENDPOINT["Akeyless API endpoint<br/>SaaS (api.akeyless.io)<br/>or customer Gateway"]
+        AUTH["Auth Method<br/>cert / api-key / k8s<br/>access_id p-XXXXXXXXXXXXXX"]
+        ROLE["Access Role<br/>read on /apps/prod/*"]
+        ITEMS["Static Secrets<br/>/apps/prod/db_password<br/>/apps/prod/api_token<br/>..."]
+        ENDPOINT --- AUTH
+        AUTH --- ROLE
         ROLE --- ITEMS
     end
 
-    PLUGIN -- "TLS client cert auth" --> SAAS
-    SAAS -- "list-items +<br/>get-secret-value" --> PLUGIN
+    PLUGIN -- "auth handshake" --> ENDPOINT
+    ENDPOINT -- "list-items +<br/>get-secret-value" --> PLUGIN
 ```
+
+The endpoint a given auth method actually hits depends on the method:
+
+- **cert** and **api-key**: terminate at the SaaS (`api.akeyless.io`).
+  Cert auth specifically *cannot* use a customer gateway because most
+  gateway ingresses do not forward TLS client certs through to the
+  gateway pod.
+- **k8s**: terminates at the customer-deployed Gateway, which calls
+  Kubernetes TokenReview to validate the ServiceAccount JWT, then
+  proxies onward to the SaaS for the secret reads.
+
+See [`04-akeyless-cert-auth.md`](04-akeyless-cert-auth.md) for the
+endpoint distinction in detail.
 
 ## Data flow: one inventory sync, end to end
 
