@@ -51,7 +51,12 @@ inputs:
       type: string
       multiline: true
       secret: true
-      help_text: Paste a JWT to override the auto-mounted SA token. Leave blank if AWX runs in-cluster; the inventory plugin will read /var/run/secrets/kubernetes.io/serviceaccount/token from the EE pod.
+      help_text: Paste a JWT to override the auto-mounted SA token. Leave blank if AWX runs in-cluster AND the inventory-update pod has the SA token mounted at /var/run/secrets/kubernetes.io/serviceaccount/token. AWX-operator deployments often disable that mount; if so, paste a token here.
+    - id: validate_certs
+      label: Validate Gateway TLS Certificate
+      type: boolean
+      default: true
+      help_text: Disable only when the gateway uses a self-signed cert in a non-production environment. For production with a private CA, bake the CA into the EE image's trust store rather than disabling verification.
   required:
     - akeyless_api_url
     - akeyless_gateway_url
@@ -66,3 +71,4 @@ injectors:
     AKEYLESS_ACCESS_TYPE: k8s
     AKEYLESS_K8S_AUTH_CONFIG_NAME: "{{ k8s_auth_config_name }}"
     AKEYLESS_K8S_SA_TOKEN: "{{ k8s_service_account_token | default('') }}"
+    AKEYLESS_VALIDATE_CERTS: "{{ validate_certs | default(true) | string | lower }}"
