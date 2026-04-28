@@ -1,4 +1,4 @@
-# Akeyless + AWX/AAP Integration (Ansible Collection)
+# Akeyless + AWX/AAP Integration
 
 An Ansible Collection that wires [Akeyless](https://www.akeyless.io/) secrets
 into [AWX](https://github.com/ansible/awx) / [Ansible Automation Platform](https://www.ansible.com/products/automation-platform)
