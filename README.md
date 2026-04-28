@@ -81,8 +81,8 @@ graph TB
     end
 
     subgraph "Akeyless SaaS"
-        SAAS["api.akeyless.io"]
-        CERTAUTH["Cert Auth Method<br/>p-XXXXXXXXXXXXXX"]
+        SAAS/Gateway["api.akeyless.io/GW-URL"]
+        Auth["Auth Method<br/>p-XXXXXXXXXXXXXX"]
         ROLE["Access Role<br/>(read on /apps/prod/*)"]
         ITEMS["Static Secrets<br/>/apps/prod/db/password<br/>/apps/prod/api/token<br/>..."]
         SAAS --- CERTAUTH
