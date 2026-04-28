@@ -1,105 +1,173 @@
-# akeyless.awx_integration
+# Akeyless + AWX/AAP Integration (Ansible Collection)
 
-Ansible Collection that wires Akeyless secrets into AWX/AAP at the platform
-level so playbooks consume them as ordinary Ansible variables. No login
-tasks, no lookup expressions, no Akeyless code in any playbook.
+An Ansible Collection that wires [Akeyless](https://www.akeyless.io/) secrets
+into [AWX](https://github.com/ansible/awx) / [Ansible Automation Platform](https://www.ansible.com/products/automation-platform)
+at the **platform level**, so playbooks consume secrets as ordinary Ansible
+variables. No `akeyless login` tasks, no lookup expressions, no Akeyless code in
+any playbook.
+
+This guide is designed for **platform engineers, AWX/AAP administrators, and
+SREs** who run hundreds of playbooks against Akeyless and want a standardized,
+auditable, low-touch way to feed secrets into Ansible jobs.
 
 ## What problem this solves
 
-Customers operating hundreds of playbooks against Akeyless typically embed
-explicit `akeyless login` and `akeyless get-secret-value` tasks inside
-every play. That couples every playbook to Akeyless, multiplies the
-maintenance surface, and makes credential rotation or secret addition
-expensive.
+Customers operating AWX/AAP against Akeyless typically embed explicit
+`akeyless login` and `akeyless get-secret-value` tasks inside every play. That
+couples every playbook to Akeyless, multiplies the maintenance surface, and
+makes credential rotation or secret addition expensive.
 
 This collection moves the integration up one layer:
 
-- **Authentication** lives in an AWX Custom Credential Type, configured
-  once.
-- **Secret retrieval** runs at inventory-sync time via an Ansible Inventory
-  Plugin and lands as host_vars / group_vars.
-- **Adding a new secret** in Akeyless makes it appear as a new variable on
-  the next inventory sync, with no AWX-side or playbook-side change.
-- **Rotating an existing secret** propagates on the next sync, again with
-  no AWX-side or playbook-side change.
+| Concern | Where it lives now |
+|---|---|
+| **Authentication to Akeyless** | An AWX Custom Credential Type, configured once. |
+| **Secret retrieval** | An Ansible Inventory Plugin that runs at inventory-sync time and lands values as `host_vars` / `group_vars`. |
+| **Adding a new secret** | Create it under the configured path in Akeyless. The next inventory sync picks it up. No AWX or playbook change. |
+| **Rotating a secret** | Rotate it in Akeyless. The next inventory sync picks up the new value. No AWX or playbook change. |
 
-## Components
+## Relationship to `akeyless.secrets_management`
 
-| Component | Path | Purpose |
+There are two Akeyless Ansible collections, and they do different things.
+
+| Collection | Maintainer | Purpose |
 |---|---|---|
-| Inventory plugin | `plugins/inventory/akeyless.py` | Authenticates to Akeyless, fetches secrets, attaches them to hosts/groups as Ansible variables. Supports either path-prefix discovery (recommended) or an explicit name-to-var mapping. |
-| AWX Custom Credential Type | `extensions/awx/credential_types/akeyless_cert_auth.yml` | Defines a reusable credential type whose injectors write the cert/key to tempfiles and expose env vars consumed by the plugin. |
-| EE build context | `ee/` | An ansible-builder context that adds the akeyless Python SDK and this collection to your existing AWX Execution Environment image. |
+| [`akeyless.secrets_management`](https://galaxy.ansible.com/ui/repo/published/akeyless/secrets_management/) | Akeyless | The official collection. Provides lookup plugins (`get_secret_value`, `get_dynamic_secret_value`, etc.) and a `module_utils` Python layer that wraps the Akeyless API client and authenticator. Designed to be called **inside playbooks**. |
+| `akeyless.awx_integration` (this repo) | Community | An AWX/AAP-specific layer on top of the official collection. Provides an **inventory plugin**, an **AWX Custom Credential Type**, and an **Execution Environment build context**. Designed to wire Akeyless into AWX **once at the platform level** so playbooks contain no Akeyless code at all. |
 
-## Requirements
+This collection takes a hard runtime dependency on
+`akeyless.secrets_management` — the inventory plugin imports its
+`AkeylessAuthenticator` and `AkeylessHelper` rather than re-implementing them.
+Both collections must be installed in your Execution Environment.
 
-- AWX or AAP already deployed and reachable.
-- Akeyless already deployed (SaaS or self-hosted gateway).
-- A cert-auth method configured in Akeyless, with an access role granting
-  read on the secret paths AWX will consume. (See the
-  [Akeyless cert-auth docs](https://docs.akeyless.io/docs/auth-with-certificate).)
-- A custom Execution Environment that includes this collection,
-  `akeyless.secrets_management` from Galaxy, and the `akeyless` Python SDK.
-  AWX does not auto-install project-level Python deps for inventory updates,
-  so the SDK must be baked into the EE.
+## Table of contents
 
-## Get started
+| # | Document | Description |
+|---|---|---|
+| 1 | [Architecture overview](runbooks/01-architecture-overview.md) | Components, data flow, mermaid diagram of an inventory sync end to end |
+| 2 | [Prerequisites](runbooks/02-prerequisites.md) | Tools, access, and information to gather before starting |
+| 3 | [Execution Environment](runbooks/03-execution-environment.md) | Use the published reference EE or build your own with `ansible-builder` |
+| 4 | [Akeyless cert-auth verification](runbooks/04-akeyless-cert-auth.md) | Confirm cert auth works against the SaaS API before touching AWX |
+| 5 | [AWX Custom Credential Type](runbooks/05-awx-credential-type.md) | Register the credential type and create a credential of that type |
+| 6 | [Inventory source configuration](runbooks/06-inventory-source.md) | Project, inventory, and inventory-source wiring with the credential and EE |
+| 7 | [First sync and test job](runbooks/07-first-sync-and-job.md) | Run the inventory sync, verify host_vars, run a playbook end to end |
+| 8 | [Day-2 operations](runbooks/08-day-2-operations.md) | Rotation, adding/removing secrets, revocation, EE refresh and pinning |
+| 9 | [Troubleshooting](runbooks/09-troubleshooting.md) | Categorized failure modes with diagnoses and fixes |
 
-End-to-end setup, including Akeyless cert-auth verification, EE selection,
-credential-type creation, inventory source configuration, first-sync
-verification, day-2 operations, and troubleshooting, is documented in
-[`runbooks/awx-setup.md`](runbooks/awx-setup.md).
+## Architecture at a glance
 
-A reference Execution Environment is published on GHCR for users who want
-to skip the build step:
+```mermaid
+%%{init: {'theme': 'neutral'}}%%
+graph TB
+    subgraph "AWX / AAP"
+        direction TB
+        AWX["AWX Controller"]
+        subgraph "Inventory Sync (per launch)"
+            CRED["Custom Credential<br/>Akeyless (Cert Auth)"]
+            INVYAML["inventory.akeyless.yml<br/>plugin: akeyless...<br/>secret_path_prefix: /apps/prod"]
+            EE["Execution Environment<br/>akeyless-awx-ee<br/>(collection + SDK baked in)"]
+            PLUGIN["Inventory Plugin<br/>akeyless.awx_integration.akeyless"]
+            VARS["host_vars / group_vars"]
+            CRED -- "env vars +<br/>cert/key tempfiles" --> PLUGIN
+            INVYAML --> PLUGIN
+            EE --- PLUGIN
+            PLUGIN --> VARS
+        end
+        JT["Job Template<br/>(any existing playbook)"]
+        AWX --> CRED
+        AWX --> INVYAML
+        VARS --> JT
+    end
+
+    subgraph "Akeyless SaaS"
+        SAAS["api.akeyless.io"]
+        CERTAUTH["Cert Auth Method<br/>p-XXXXXXXXXXXXXX"]
+        ROLE["Access Role<br/>(read on /apps/prod/*)"]
+        ITEMS["Static Secrets<br/>/apps/prod/db/password<br/>/apps/prod/api/token<br/>..."]
+        SAAS --- CERTAUTH
+        CERTAUTH --- ROLE
+        ROLE --- ITEMS
+    end
+
+    PLUGIN -- "TLS client cert auth" --> SAAS
+    SAAS -- "list-items +<br/>get-secret-value" --> PLUGIN
+```
+
+For the data-flow walkthrough that maps each arrow to a step, see
+[`runbooks/01-architecture-overview.md`](runbooks/01-architecture-overview.md).
+
+## Repository layout
+
+| Path | What it is |
+|---|---|
+| `plugins/inventory/akeyless.py` | The inventory plugin. FQCN `akeyless.awx_integration.akeyless`. |
+| `extensions/awx/credential_types/akeyless_cert_auth.yml` | Source YAML for the AWX Custom Credential Type (paste into AWX UI, or load via the `awx.awx.credential_type` module). |
+| `ee/` | `ansible-builder` v3 context that produces the reference Execution Environment image. |
+| `ee/execution-environment.yml` | EE definition: base image, collections, Python deps. |
+| `ee/requirements.txt` | Python deps baked into the EE (currently the `akeyless` SDK). |
+| `meta/runtime.yml` | Minimum ansible-core version (`>=2.15.0`). |
+| `galaxy.yml` | Collection metadata: namespace, name, version, dependencies, `build_ignore`. |
+| `runbooks/` | Numbered operator runbooks (this guide). |
+| `tests/integration/awx-setup.yml` | Reference provisioning playbook that stands up the credential type, EE, project, inventory source, and job template against a real AWX instance using `awx.awx` modules. |
+| `tests/integration/project/` | Sample project tree (inventory YAML + example playbook) the provisioning playbook points AWX at. |
+| `.github/workflows/ee-build.yml` | Weekly + on-change rebuild of the published EE image, plus Trivy scan. |
+| `.github/workflows/ee-scan.yml` | Daily Trivy scan of the published `:latest` tag. |
+
+## Quick start
+
+1. Verify the [prerequisites](runbooks/02-prerequisites.md) are met.
+2. Pick or build an [Execution Environment](runbooks/03-execution-environment.md).
+3. [Verify Akeyless cert-auth](runbooks/04-akeyless-cert-auth.md) end to end with the CLI.
+4. Register the [AWX Custom Credential Type](runbooks/05-awx-credential-type.md) and create a credential of that type.
+5. Wire up the [inventory source](runbooks/06-inventory-source.md) using a project of inventory YAMLs.
+6. Run the [first sync and a test job](runbooks/07-first-sync-and-job.md).
+
+End-to-end happy path: ~20 minutes once cert auth works.
+
+## Reference Execution Environment
+
+A pre-built EE is published on GHCR for users who want to skip the build step:
 
 ```
 ghcr.io/fahmy-kadiri-akl/akeyless-awx-ee:0.1.0
 ```
 
-It contains this collection, `akeyless.secrets_management`, and the
-`akeyless` Python SDK. Rebuilt weekly. Public; pulls require no auth.
+It contains this collection, `akeyless.secrets_management`, and the `akeyless`
+Python SDK. Public; pulls require no auth. Rebuilt every Monday by the
+`ee-build.yml` workflow and scanned daily by `ee-scan.yml`.
 
-## Inventory plugin options
+To build your own — for private registries, custom bases, or internal
+supply-chain controls — see
+[`runbooks/03-execution-environment.md`](runbooks/03-execution-environment.md).
 
-| Option | Purpose |
+## Compatibility
+
+| Component | Version |
 |---|---|
-| `secret_path_prefix` | Auto-discover every static secret under this path. New secrets added in Akeyless show up automatically on the next sync. |
-| `secrets` | Explicit `{name, var}` mapping when a fixed naming contract is needed. Combinable with `secret_path_prefix`. |
-| `var_name_template` | How to derive variable names from secret paths. Defaults to the path under the prefix with `/` replaced by `_`. Other placeholders: `{basename}`, `{fullname}`. |
-| `secret_types` | Akeyless item types to discover. Default: `['static-secret']`. |
-| `hosts` / `groups` / `default_group` | Where to attach the discovered variables. |
-
-Auth options (`access_id`, `cert_file`, `key_file`, `access_type`,
-`akeyless_api_url`) are normally injected by the AWX credential and do not
-need to live in the inventory source YAML.
+| AWX / AAP | Tested against AWX 24.6.1; expected to work on any release that supports Custom Credential Types and per-source EEs |
+| ansible-core | `>=2.15.0` (this collection); `>=2.18.0` required by `akeyless.secrets_management` |
+| Python (in the EE) | 3.12 (the `quay.io/ansible/awx-ee` default) |
+| `akeyless.secrets_management` | `>=1.0.0` |
+| `akeyless` Python SDK | `>=5.0,<6.0` |
 
 ## Why an inventory plugin instead of a credential plugin?
 
 AWX's first-class "Credential Plugin" / "External Secret Management Source"
 mechanism (the one used by HashiCorp Vault, CyberArk, etc.) requires
 modifications to AWX itself. The AWX upstream is in a refactor and not
-accepting new credential plugins as of 2024-07. An inventory plugin
-combined with a Custom Credential Type achieves the same end-state
-(platform-level auth, no playbook changes, dynamic secret pickup) without
-depending on the frozen upstream.
+accepting new credential plugins as of 2024-07. An inventory plugin combined
+with a Custom Credential Type achieves the same end-state — platform-level
+auth, no playbook changes, dynamic secret pickup — without depending on the
+frozen upstream.
 
-## Maintenance and supply-chain hygiene
+## Additional resources
 
-Two GitHub Actions workflows (`.github/workflows/ee-build.yml` and
-`ee-scan.yml`) keep the published EE image fresh and visibly scanned.
-`ee-build.yml` rebuilds weekly (Mondays 09:00 UTC) and on dependency
-changes; `ee-scan.yml` runs Trivy daily and uploads SARIF to the GitHub
-Security tab. Both are non-blocking by default; flip the scan step's
-`exit-code: 1` to gate CI on findings.
-
-## Versions and compatibility
-
-- Tested against AWX 24.6.1 with the default `awx-ee` execution environment
-  (Python 3.12, ansible-core 2.18).
-- Depends on `akeyless.secrets_management` >= 1.0.0 from Ansible Galaxy.
-- Requires the akeyless Python SDK >= 5.0.
+- [Akeyless documentation](https://docs.akeyless.io)
+- [Akeyless cert-auth method](https://docs.akeyless.io/docs/auth-with-certificate)
+- [`akeyless.secrets_management` on Galaxy](https://galaxy.ansible.com/ui/repo/published/akeyless/secrets_management/)
+- [AWX Custom Credential Types](https://docs.ansible.com/automation-controller/latest/html/userguide/credential_types.html)
+- [`ansible-builder` v3 docs](https://ansible.readthedocs.io/projects/builder/en/latest/)
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
