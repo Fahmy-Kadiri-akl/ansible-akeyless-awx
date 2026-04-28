@@ -37,6 +37,11 @@ default_group: prod_apps
 A secret at `/apps/prod/db/password` becomes the variable `db_password` on
 every host listed under `hosts` (and on `default_group` if set).
 
+A ready-to-use copy of this file is committed at
+`examples/inventory.akeyless.yml` in this repo, so you can point an AWX
+project at this repo and use `examples/inventory.akeyless.yml` as the
+**Inventory file** path without writing your own.
+
 ### Explicit name-to-var mapping
 
 Use this when you need a fixed naming contract independent of the Akeyless
@@ -146,12 +151,56 @@ Open the inventory you just created. Click the **Sources** tab, then
 | **Name** | `akeyless`. |
 | **Source** | `Sourced from a Project`. |
 | **Project** | The project from step 2. |
-| **Inventory file** | The YAML path inside the repo, for example `inventory.akeyless.yml`. |
+| **Inventory file** | The YAML path inside the repo. With this repo as your project: `examples/inventory.akeyless.yml`. With your own repo: the path you committed (e.g. `inventory.akeyless.yml`). |
 | **Credential** | The credential from [step 05](05-awx-credential-type.md). |
 | **Execution Environment** | The EE from [step 03](03-execution-environment.md). Set this on the source, not on the inventory or as the system default. AWX uses the source's EE for inventory updates. |
 | **Update on launch** | enabled, so every job sees fresh secret values. |
 
 Click **Save**.
+
+> **The Inventory file dropdown will not list `inventory.akeyless.yml`
+> automatically.** AWX populates the dropdown by inspecting the project
+> tree for files it recognizes as static inventories. A plugin-style
+> YAML (no static `hosts` section, just `plugin: ...`) is not
+> auto-detected. Type the path manually.
+
+### Or, via API
+
+```bash
+# Create the inventory
+curl -sk -u "<admin>:<pass>" \
+  -H 'Content-Type: application/json' \
+  -X POST https://<awx-host>/api/v2/inventories/ \
+  -d '{ "name": "akeyless-prod", "organization": <org-id> }'
+# -> note the returned id, call it INV_ID
+
+# Create the inventory source bound to project, credential, and EE
+curl -sk -u "<admin>:<pass>" \
+  -H 'Content-Type: application/json' \
+  -X POST https://<awx-host>/api/v2/inventory_sources/ \
+  -d '{
+    "name": "akeyless",
+    "inventory": <INV_ID>,
+    "source": "scm",
+    "source_project": <PROJECT_ID>,
+    "source_path": "examples/inventory.akeyless.yml",
+    "credential": <CREDENTIAL_ID>,
+    "execution_environment": <EE_ID>,
+    "update_on_launch": true,
+    "overwrite": true,
+    "overwrite_vars": true
+  }'
+```
+
+If `credential` is silently ignored on create (some AWX versions),
+attach it after the fact:
+
+```bash
+curl -sk -u "<admin>:<pass>" \
+  -H 'Content-Type: application/json' \
+  -X POST https://<awx-host>/api/v2/inventory_sources/<id>/credentials/ \
+  -d '{ "id": <CREDENTIAL_ID> }'
+```
 
 > **Why "Update on launch"?** Without it, AWX uses the inventory it cached
 > the last time you manually clicked **Sync**. A secret rotated in

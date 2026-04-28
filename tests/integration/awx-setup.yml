@@ -42,6 +42,12 @@
     key_pem:  "{{ lookup('file', lookup('env','AKEYLESS_KEY_PEM_PATH')) }}"
 
   tasks:
+    # Note on the {% raw %}{{ ... }}{% endraw %} markers below: this playbook is parsed
+    # by Ansible before the inputs/injectors dict is posted to AWX, so the {{ ... }}
+    # values would otherwise be templated locally and break. The canonical
+    # extensions/awx/credential_types/akeyless_cert_auth.yml file (intended for
+    # direct UI paste) does NOT use raw blocks, because AWX evaluates Jinja itself
+    # at job-run time. The two files are intentionally different.
     - name: Define Akeyless cert-auth credential type
       credential_type:
         name: '{{ cred_type_name }}'

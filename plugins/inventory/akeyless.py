@@ -125,7 +125,7 @@ DOCUMENTATION = r'''
 '''
 
 EXAMPLES = r'''
-# inventory.akeyless.yml — discover all secrets under a path prefix
+# inventory.akeyless.yml: discover all secrets under a path prefix
 plugin: akeyless.awx_integration.akeyless
 secret_path_prefix: /apps/prod
 hosts:
@@ -134,7 +134,7 @@ hosts:
 default_group: prod_apps
 
 ---
-# inventory.akeyless.yml — explicit name-to-var mapping
+# inventory.akeyless.yml: explicit name-to-var mapping
 plugin: akeyless.awx_integration.akeyless
 secrets:
   - name: /apps/prod/db_password

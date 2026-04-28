@@ -1,0 +1,28 @@
+# Smoke-test playbook. Confirms that Akeyless secrets reached the play
+# as ordinary host_vars without any Akeyless code in the playbook.
+#
+# `connection: local` is set because the example hosts in
+# inventory.akeyless.yml (`app01.example.com`, `app02.example.com`) are
+# fictional placeholders. With a real inventory pointing at reachable
+# hosts, drop `connection: local` and the play runs against the real
+# targets.
+
+- name: Smoke test for Akeyless inventory plugin
+  hosts: all
+  gather_facts: false
+  connection: local
+  tasks:
+    - name: Confirm at least one Akeyless-sourced host_var is present
+      ansible.builtin.assert:
+        that:
+          - hostvars[inventory_hostname]
+              | dict2items
+              | selectattr('value', 'string')
+              | list
+              | length > 0
+        success_msg: Akeyless secrets reached the playbook as host_vars
+        fail_msg: No string-valued host_vars on this host
+
+    - name: Show variable name count (never print values)
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} has {{ hostvars[inventory_hostname].keys() | list | length }} variables"

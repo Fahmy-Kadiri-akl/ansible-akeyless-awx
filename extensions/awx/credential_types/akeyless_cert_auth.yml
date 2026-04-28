@@ -4,11 +4,25 @@
 #   System Administration -> Credential Types -> Add
 # (or import via the awx.awx.credential_type Ansible module).
 #
-# Once registered, admins create credential instances of this type and attach
-# them to inventory sources that use the akeyless.awx_integration.akeyless
-# inventory plugin. The plugin reads everything it needs from environment
-# variables and tempfile paths the injectors write at job-run time.
-# Playbooks consume the resulting host_vars with no Akeyless code.
+# Once registered, admins create credential instances of this type and
+# attach them to inventory sources that use the
+# akeyless.awx_integration.akeyless inventory plugin. The plugin reads
+# everything it needs from environment variables and tempfile paths the
+# injectors write at job-run time. Playbooks consume the resulting
+# host_vars with no Akeyless code.
+#
+# IMPORTANT: this YAML is intended for direct paste into the AWX UI or
+# for posting to /api/v2/credential_types/ as JSON. The injector values
+# are written as plain Jinja (`{{ ... }}`). AWX evaluates them itself
+# at job-run time. Do NOT wrap them in `{% raw %}` markers; AWX would
+# store the literal text and the env vars would end up containing the
+# string `{{ tower.filename.cert }}` instead of the tempfile path.
+#
+# tests/integration/awx-setup.yml inlines its own copy of these
+# injectors and DOES wrap them in `{% raw %}` blocks. That copy is fed
+# through Ansible (which evaluates Jinja during YAML parse), so the raw
+# markers are required there to prevent local templating before the
+# values are posted to AWX. The two files are intentionally different.
 
 name: Akeyless (Cert Auth)
 description: Authenticate to Akeyless with a client certificate. Consumed by the akeyless.awx_integration.akeyless inventory plugin.
@@ -44,11 +58,11 @@ inputs:
 
 injectors:
   env:
-    AKEYLESS_API_URL: '{% raw %}{{ akeyless_api_url }}{% endraw %}'
-    AKEYLESS_ACCESS_ID: '{% raw %}{{ access_id }}{% endraw %}'
+    AKEYLESS_API_URL: "{{ akeyless_api_url }}"
+    AKEYLESS_ACCESS_ID: "{{ access_id }}"
     AKEYLESS_ACCESS_TYPE: cert
-    AKEYLESS_CERT_FILE: '{% raw %}{{ tower.filename.cert }}{% endraw %}'
-    AKEYLESS_KEY_FILE: '{% raw %}{{ tower.filename.key }}{% endraw %}'
+    AKEYLESS_CERT_FILE: "{{ tower.filename.cert }}"
+    AKEYLESS_KEY_FILE: "{{ tower.filename.key }}"
   file:
-    template.cert: '{% raw %}{{ cert_data }}{% endraw %}'
-    template.key: '{% raw %}{{ key_data }}{% endraw %}'
+    template.cert: "{{ cert_data }}"
+    template.key: "{{ key_data }}"

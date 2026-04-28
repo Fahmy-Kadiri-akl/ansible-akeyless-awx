@@ -28,19 +28,36 @@ ghcr.io/fahmy-kadiri-akl/akeyless-awx-ee:0.1.0
 - Scanned daily by `.github/workflows/ee-scan.yml` (Trivy SARIF in the
   Security tab).
 
-### Verify the image is reachable
+### Verify the image is published and public
+
+A docker pull on your laptop only proves your laptop can reach GHCR.
+For a Kubernetes-based AWX (the `awx-operator` default), the image is
+pulled by containerd on the AWX node, not by your laptop. The
+authoritative check is the package's GHCR visibility:
 
 ```bash
-docker pull ghcr.io/fahmy-kadiri-akl/akeyless-awx-ee:0.1.0
+gh api /users/Fahmy-Kadiri-akl/packages/container/akeyless-awx-ee \
+  --jq '.visibility'
 ```
 
 Expected output:
 
 ```
-0.1.0: Pulling from fahmy-kadiri-akl/akeyless-awx-ee
-...
-Status: Downloaded newer image for ghcr.io/fahmy-kadiri-akl/akeyless-awx-ee:0.1.0
+public
 ```
+
+If the visibility is `private`, anonymous pulls fail with HTTP 401 and
+inventory syncs error out as `ImagePullBackOff`. To make it public:
+
+```bash
+gh api -X PATCH \
+  /user/packages/container/akeyless-awx-ee/visibility \
+  -f visibility=public
+```
+
+If you cannot make the image public (organization policy, internal
+registry mirror), attach a Container Registry credential to the EE
+in AWX so the pull authenticates.
 
 ### Available tags
 
@@ -121,6 +138,22 @@ Click **Save**.
 The EE appears in **Administration -> Execution Environments** and is
 selectable from the EE dropdown when you create an inventory source in
 [step 06](06-inventory-source.md).
+
+### Or, via API
+
+```bash
+curl -sk -u "<admin>:<pass>" \
+  -H 'Content-Type: application/json' \
+  -X POST https://<awx-host>/api/v2/execution_environments/ \
+  -d '{
+    "name": "akeyless-awx-ee",
+    "image": "ghcr.io/fahmy-kadiri-akl/akeyless-awx-ee:0.1.0",
+    "pull": "always"
+  }'
+```
+
+Expected response: HTTP 201 with the new EE object (note the `id` for
+later runbook steps).
 
 ## Next steps
 

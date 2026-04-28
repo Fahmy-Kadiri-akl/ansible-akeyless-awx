@@ -29,8 +29,10 @@ in this order:
    `akeyless configure --gateway-url <url>` (use `""` to clear).
 3. Default: the Akeyless SaaS API.
 
-For cert-auth verification both 1 and 2 must be empty so the CLI reaches
-the SaaS API directly.
+For cert-auth verification, both 1 and 2 must point at the Akeyless
+SaaS API. They can be empty (the CLI defaults to the SaaS API in that
+case) or explicitly set to `https://api.akeyless.io`. They must NOT
+point at a customer gateway URL.
 
 ### Inspect the active profile
 
@@ -38,17 +40,26 @@ the SaaS API directly.
 cat ~/.akeyless/profiles/default.toml
 ```
 
-Expected output (look for `gateway_url = ''`):
+Expected output (the file uses TOML with a `["default"]` section
+header; only the `gateway_url` line matters here):
 
 ```toml
-access_id = 'p-XXXXXXXXXXXXXX'
-access_key = ''
-access_type = 'access_key'
-gateway_url = ''
-...
+["default"]
+  default_location_prefix = ''
+  gateway_url = ''
+  cert_issuer_name = ''
+  public_key_file_path = ''
+  access_id = 'p-XXXXXXXXXXXXXX'
+  access_type = 'access_key'
+  cert_username = ''
+  legacy_signing_alg = 'false'
+  access_key = '...'
 ```
 
-If `gateway_url` is set to anything other than `''`, clear it:
+`gateway_url = ''` and `gateway_url = 'https://api.akeyless.io'` both
+work for cert auth. If the line is set to anything that looks like a
+customer gateway (for example `https://your-gw:8000/api/v1`), clear
+it before continuing:
 
 ```bash
 akeyless configure --gateway-url ""
@@ -72,11 +83,12 @@ Expected output:
 
 ```
 Authentication succeeded.
-{"token":"t-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+Token: t-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 The presence of a `t-...` token is the only signal that cert auth works
-end to end.
+end to end. If you append `--json` to the command, the same token is
+returned as `{"token":"t-..."}` for easier scripting.
 
 ### Verify the token can actually fetch a secret
 
