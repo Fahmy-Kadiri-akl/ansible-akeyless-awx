@@ -26,12 +26,21 @@ DOCUMENTATION = r'''
         required: true
         choices: ['akeyless.awx_integration.akeyless']
       akeyless_api_url:
-        description: Akeyless gateway URL. Cert auth must hit the Akeyless
-          control plane at https://api.akeyless.io.
+        description: Akeyless API URL. For api_key and cert auth, this is the
+          Akeyless control plane (https://api.akeyless.io). For k8s auth, this
+          is also the SaaS API; use I(akeyless_gateway_url) to point at the
+          customer gateway that performs TokenReview.
         type: str
         default: 'https://api.akeyless.io'
         env:
           - name: AKEYLESS_API_URL
+      akeyless_gateway_url:
+        description: Akeyless customer gateway URL. Required for k8s auth; the
+          gateway is what calls Kubernetes TokenReview to validate the
+          ServiceAccount token. Ignored for api_key and cert auth.
+        type: str
+        env:
+          - name: AKEYLESS_GATEWAY_URL
       access_type:
         description: Akeyless authentication method.
         type: str
@@ -69,6 +78,29 @@ DOCUMENTATION = r'''
         type: str
         env:
           - name: AKEYLESS_KEY_DATA
+      k8s_auth_config_name:
+        description: Name of the Kubernetes auth config in the Akeyless cert
+          auth method (used when access_type=k8s). Identifies which K8s cluster
+          this auth flow targets when the auth method spans multiple clusters.
+        type: str
+        env:
+          - name: AKEYLESS_K8S_AUTH_CONFIG_NAME
+      k8s_service_account_token:
+        description: Kubernetes ServiceAccount JWT (used when access_type=k8s).
+          If unset and I(k8s_token_path) is readable, the plugin reads the
+          token from there. Inside an AWX EE pod, the default path resolves
+          to the pod's own ServiceAccount token.
+        type: str
+        env:
+          - name: AKEYLESS_K8S_SA_TOKEN
+      k8s_token_path:
+        description: Filesystem path to read the Kubernetes ServiceAccount
+          JWT from when I(k8s_service_account_token) is not set. Defaults to
+          the in-pod auto-mount path.
+        type: path
+        default: /var/run/secrets/kubernetes.io/serviceaccount/token
+        env:
+          - name: AKEYLESS_K8S_TOKEN_PATH
       ca_bundle:
         description: Path to a CA bundle to verify the gateway TLS cert.
         type: path
@@ -184,6 +216,7 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
 
         opts = self._build_auth_options()
         self._resolve_cert_material(opts)
+        self._resolve_k8s_token(opts)
 
         api_client = self._build_api_client(opts)
         authenticator = AkeylessAuthenticator(opts)
@@ -281,8 +314,11 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
 
     def _build_auth_options(self):
         result = {}
-        for key in ['akeyless_api_url', 'access_type', 'access_id', 'access_key',
-                    'cert_file', 'key_file', 'cert_data', 'key_data']:
+        for key in ['akeyless_api_url', 'akeyless_gateway_url',
+                    'access_type', 'access_id', 'access_key',
+                    'cert_file', 'key_file', 'cert_data', 'key_data',
+                    'k8s_auth_config_name', 'k8s_service_account_token',
+                    'k8s_token_path']:
             try:
                 result[key] = self.get_option(key)
             except KeyError:
@@ -296,6 +332,25 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
             opts['cert_data'] = self._read_file_b64(opts['cert_file'])
         if not opts.get('key_data') and opts.get('key_file'):
             opts['key_data'] = self._read_file_b64(opts['key_file'])
+
+    def _resolve_k8s_token(self, opts):
+        if opts.get('access_type') != 'k8s':
+            return
+        if opts.get('k8s_service_account_token'):
+            return
+        path = opts.get('k8s_token_path')
+        if not path:
+            return
+        try:
+            with open(path, 'r') as f:
+                opts['k8s_service_account_token'] = f.read().strip()
+        except OSError as e:
+            raise AnsibleError(
+                'Cannot read Kubernetes ServiceAccount token from %s: %s. '
+                'Either set k8s_service_account_token directly or ensure the '
+                'inventory-update pod has the SA token mounted at this path.'
+                % (path, e)
+            )
 
     def _read_file_b64(self, path):
         try:

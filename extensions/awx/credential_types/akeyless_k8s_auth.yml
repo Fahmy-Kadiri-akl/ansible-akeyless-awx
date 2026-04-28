@@ -1,0 +1,68 @@
+# Akeyless Kubernetes Auth Credential Type for AWX/AAP
+#
+# Paste the 'inputs' and 'injectors' blocks below into AWX:
+#   System Administration -> Credential Types -> Add
+# (or import via the awx.awx.credential_type Ansible module).
+#
+# This credential type carries the Akeyless K8s auth method's access ID
+# plus the K8s-auth-config name. The Kubernetes ServiceAccount JWT is
+# read from the inventory-update pod's auto-mount path
+# (`/var/run/secrets/kubernetes.io/serviceaccount/token`) at job-run time
+# unless the operator pastes one explicitly.
+#
+# K8s auth flow (operator perspective):
+#
+#   AWX EE pod (with SA token) --HTTPS--> api.akeyless.io
+#         Akeyless SaaS forwards the validation to the customer
+#         gateway specified by Akeyless Gateway URL below, and the
+#         gateway calls Kubernetes TokenReview to confirm the JWT.
+#
+# Without the gateway field set, k8s auth has no way to call TokenReview
+# and authentication fails.
+#
+# Injectors are written as plain Jinja (`{{ ... }}`). AWX evaluates them
+# itself at job-run time. Do NOT wrap them in `{% raw %}` markers.
+
+name: Akeyless (Kubernetes Auth)
+description: Authenticate to Akeyless with a Kubernetes ServiceAccount token, validated through an Akeyless customer gateway. Consumed by the akeyless.awx_integration.akeyless inventory plugin.
+kind: cloud
+
+inputs:
+  fields:
+    - id: akeyless_api_url
+      label: Akeyless API URL
+      type: string
+      default: https://api.akeyless.io
+      help_text: Akeyless control plane. The default works for SaaS tenants. The auth handshake terminates here; the SaaS forwards TokenReview to the gateway.
+    - id: akeyless_gateway_url
+      label: Akeyless Gateway URL
+      type: string
+      help_text: Customer-deployed Akeyless Gateway, e.g. https://your-gateway.example.com:8000/api/v1. Required for k8s auth; the gateway validates the SA token via Kubernetes TokenReview.
+    - id: access_id
+      label: Akeyless Access ID
+      type: string
+      help_text: The access ID of the K8s auth method, e.g. p-XXXXXXXXXXXXXX.
+    - id: k8s_auth_config_name
+      label: K8s Auth Config Name
+      type: string
+      help_text: The K8s auth config name within the Akeyless K8s auth method. Identifies which cluster's TokenReview endpoint to use when one auth method spans multiple clusters.
+    - id: k8s_service_account_token
+      label: ServiceAccount Token (optional)
+      type: string
+      multiline: true
+      secret: true
+      help_text: Paste a JWT to override the auto-mounted SA token. Leave blank if AWX runs in-cluster; the inventory plugin will read /var/run/secrets/kubernetes.io/serviceaccount/token from the EE pod.
+  required:
+    - akeyless_api_url
+    - akeyless_gateway_url
+    - access_id
+    - k8s_auth_config_name
+
+injectors:
+  env:
+    AKEYLESS_API_URL: "{{ akeyless_api_url }}"
+    AKEYLESS_GATEWAY_URL: "{{ akeyless_gateway_url }}"
+    AKEYLESS_ACCESS_ID: "{{ access_id }}"
+    AKEYLESS_ACCESS_TYPE: k8s
+    AKEYLESS_K8S_AUTH_CONFIG_NAME: "{{ k8s_auth_config_name }}"
+    AKEYLESS_K8S_SA_TOKEN: "{{ k8s_service_account_token | default('') }}"

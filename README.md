@@ -22,7 +22,7 @@ This collection moves the integration up one layer.
 
 | Concern | Where it lives now |
 |---|---|
-| Authentication to Akeyless | An AWX Custom Credential Type, configured once. |
+| Authentication to Akeyless | An AWX Custom Credential Type, configured once. The collection ships three: cert, API-key, and Kubernetes auth. |
 | Secret retrieval | An Ansible Inventory Plugin that runs at inventory-sync time and lands values as `host_vars` and `group_vars`. |
 | Adding a new secret | Create it under the configured path in Akeyless. The next inventory sync picks it up. No AWX or playbook change. |
 | Rotating a secret | Rotate it in Akeyless. The next inventory sync picks up the new value. No AWX or playbook change. |
@@ -102,7 +102,9 @@ For the data-flow walkthrough that maps each arrow to a step, see
 | Path | What it is |
 |---|---|
 | `plugins/inventory/akeyless.py` | The inventory plugin. FQCN `akeyless.awx_integration.akeyless`. |
-| `extensions/awx/credential_types/akeyless_cert_auth.yml` | Source YAML for the AWX Custom Credential Type. Paste into the AWX UI, or load via the `awx.awx.credential_type` module. |
+| `extensions/awx/credential_types/akeyless_cert_auth.yml` | Source YAML for the cert-auth Custom Credential Type. |
+| `extensions/awx/credential_types/akeyless_api_key.yml` | Source YAML for the API-key Custom Credential Type. |
+| `extensions/awx/credential_types/akeyless_k8s_auth.yml` | Source YAML for the Kubernetes-auth Custom Credential Type. |
 | `ee/` | `ansible-builder` v3 context that produces the reference Execution Environment image. |
 | `ee/execution-environment.yml` | EE definition: base image, collections, Python deps. |
 | `ee/requirements.txt` | Python deps baked into the EE (currently the `akeyless` SDK). |

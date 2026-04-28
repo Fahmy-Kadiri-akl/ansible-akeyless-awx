@@ -9,10 +9,10 @@ flow of a single inventory sync.
 | Component | Role |
 |---|---|
 | Akeyless SaaS (`api.akeyless.io`) | Central secrets management. Stores secrets, manages access roles, performs the cert-auth handshake. |
-| Akeyless cert auth method | An auth method whose `access_id` looks like `p-XXXXXXXXXXXXXX` and that trusts a specific CA. Cert-auth handshakes terminate at the SaaS API, not at a customer gateway (most gateway ingresses do not pass TLS client certs through). |
-| Akeyless access role | Bound to the cert auth method. Grants `read` on the secret paths AWX will consume. |
+| Akeyless auth method | One of cert, API-key, or Kubernetes auth. The auth method's `access_id` looks like `p-XXXXXXXXXXXXXX`. Cert and API-key handshakes terminate at the SaaS API; k8s handshakes additionally route through a customer gateway that calls Kubernetes TokenReview. |
+| Akeyless access role | Bound to the auth method. Grants `read` on the secret paths AWX will consume. |
 | AWX / AAP Controller | Runs inventory syncs and job templates. Manages credentials, projects, inventories, and EEs. |
-| Custom Credential Type | Defined by `extensions/awx/credential_types/akeyless_cert_auth.yml`. Declares the cred fields (`akeyless_api_url`, `access_id`, `cert_data`, `key_data`) and the injectors that write the cert and key to tempfiles and set `AKEYLESS_*` env vars at job-run time. |
+| Custom Credential Type | Defined by one of three YAML files under `extensions/awx/credential_types/`: `akeyless_cert_auth.yml`, `akeyless_api_key.yml`, or `akeyless_k8s_auth.yml`. Each declares the cred fields and the injectors that set `AKEYLESS_*` env vars (and, for cert auth, write the cert and key to tempfiles) at job-run time. |
 | Credential instance | A specific instance of the Custom Credential Type with the customer's access ID and PEM material. Attached to inventory sources. |
 | Execution Environment (EE) | A container image that contains ansible-core plus this collection, `akeyless.secrets_management`, and the `akeyless` Python SDK. AWX runs every inventory sync inside this image. |
 | AWX Project | A Git repo synced into AWX. Holds the `inventory.akeyless.yml` files (and any playbooks referenced by job templates). |
