@@ -237,7 +237,7 @@ What to check:
 1. **`PLAY RECAP` shows `ok=2`** for every host. `ok=2` means the
    `assert` task (which fails if no Akeyless host_var arrived) passed,
    AND the debug task ran. `ok=1` would mean assert passed but debug
-   skipped — usually a YAML typo. `failed=1` on the assert task means
+   skipped, usually a YAML typo. `failed=1` on the assert task means
    no host_vars made it to the play.
 2. **The "Akeyless secrets reached the playbook as host_vars" line
    appears once per host**. If it does not appear at all, the assert

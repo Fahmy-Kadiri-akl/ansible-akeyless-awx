@@ -135,9 +135,23 @@ Click **Save**.
 
 ### Verify
 
-The EE appears in **Administration -> Execution Environments** and is
-selectable from the EE dropdown when you create an inventory source in
-[step 06](06-inventory-source.md).
+In the UI, go to **Administration -> Execution Environments**. The EE
+you just registered appears in the list with the name and image you
+provided. It will also be selectable in the EE dropdown when you
+create the inventory source in [step 06](06-inventory-source.md).
+
+Or, via API:
+
+```bash
+AWX=https://<awx-host>
+AUTH=admin:<password>
+curl -sk -u "$AUTH" "$AWX/api/v2/execution_environments/?name=akeyless-awx-ee" \
+  | python3 -c 'import json,sys; r=json.load(sys.stdin)["results"]; [print(e["id"], e["name"], e["image"]) for e in r]'
+```
+
+Expected: one line listing the new EE's id, name, and image. If
+nothing prints, the create failed silently. Re-run the registration
+call and check its response.
 
 ### Or, via API
 

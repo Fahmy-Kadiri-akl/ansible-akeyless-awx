@@ -17,6 +17,18 @@ In the AWX UI, open the left-side menu and confirm you see
 Environments**. If those menu items are missing, your account does not
 have the privileges this guide needs.
 
+Or, via API:
+
+```bash
+AWX=https://<awx-host>
+AUTH=admin:<password>
+curl -sk -u "$AUTH" "$AWX/api/v2/me/" \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin)["results"][0]; print("is_superuser:", d["is_superuser"])'
+```
+
+Expected: `is_superuser: True`. Anything else means you cannot create
+the credential types and EEs the rest of this guide registers.
+
 ## Akeyless
 
 - [ ] An Akeyless account (SaaS, or self-hosted with SaaS reachability).
@@ -55,6 +67,17 @@ In the Akeyless console, open **Auth Methods** and filter by
 **type = Certificate**. The access ID column shows the value you will use
 as `AKEYLESS_ACCESS_ID`. Note it down.
 
+Or, via CLI:
+
+```bash
+akeyless list-auth-methods --type cert
+```
+
+Expected: a JSON object with `auth_methods[]`; each entry has
+`auth_method_name` and `auth_method_access_id` (a `p-...XXX` string).
+Replace `--type cert` with `--type api_key` or `--type k8s` for the
+other auth methods.
+
 ### Verify the role grants read on the right paths
 
 In the Akeyless console, open the auth method, scroll to **Associated
@@ -64,9 +87,31 @@ Roles**, and click into the role. Confirm two things:
    (for example `/apps/prod/*`).
 2. Items exist under that path.
 
-If either is false, fix it now. The inventory plugin returns a clean error
-if items are missing, but a misconfigured role usually surfaces as a 401
-buried in an inventory-update job log.
+Or, via CLI:
+
+```bash
+akeyless get-auth-method --name <auth-method-name>
+```
+
+Expected: the response includes an `auth_method_roles_assoc[]` array.
+Each role's `rules.path_rules[]` entries list `path` and `capabilities`.
+Look for a `path` that includes the prefix you plan to use (for example
+`/apps/prod/*`) with `read` and `list` in `capabilities`.
+
+To confirm items actually exist under that path, list them with a
+short-lived token from a successful CLI handshake (see
+[step 04](04-akeyless-cert-auth.md)):
+
+```bash
+akeyless list-items --path /apps/prod --type static-secret --token t-...
+```
+
+Expected: a non-empty `items[]` array.
+
+If either check fails, fix the role or seed at least one secret now.
+The inventory plugin returns a clean error if items are missing, but a
+misconfigured role usually surfaces as a 401 buried in an
+inventory-update job log.
 
 ## Local tools
 
