@@ -10,7 +10,7 @@ on:
       - "galaxy.yml"
       - ".github/workflows/ee-build.yml"
   schedule:
-    # Mondays 09:00 UTC — picks up base image + transitive pip updates
+    # Mondays 09:00 UTC. Picks up base image and transitive pip updates.
     - cron: "0 9 * * 1"
   workflow_dispatch: {}
 
@@ -73,6 +73,20 @@ jobs:
           docker push "$IMAGE:${{ steps.meta.outputs.version }}"
           docker push "$IMAGE:latest"
           docker push "$IMAGE:weekly-${{ steps.meta.outputs.date }}"
+
+      - name: Assert GHCR package visibility is public
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          VIS=$(gh api "/users/${OWNER}/packages/container/akeyless-awx-ee" --jq '.visibility')
+          echo "current visibility: ${VIS}"
+          if [ "${VIS}" != "public" ]; then
+            echo "::error::Package visibility is '${VIS}', expected 'public'."
+            echo "::error::Runbook 03 (Option A) tells users the image is public; pulls will 401 otherwise."
+            echo "::error::Fix: gh api -X PATCH /user/packages/container/akeyless-awx-ee/visibility -f visibility=public"
+            exit 1
+          fi
 
       - name: Trivy scan of freshly built image
         uses: aquasecurity/trivy-action@v0.36.0

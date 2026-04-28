@@ -1,4 +1,4 @@
-# AWX inventory source — Akeyless path-discovery mode.
+# AWX inventory source for Akeyless, path-discovery mode.
 # Auth (akeyless_api_url, access_id, cert_file, key_file) is injected by the
 # AWX credential at job-run time. Do not put auth fields here.
 plugin: akeyless.awx_integration.akeyless

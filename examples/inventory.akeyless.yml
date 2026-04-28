@@ -1,0 +1,24 @@
+# Example inventory source for AWX/AAP using path discovery.
+#
+# Auth fields (akeyless_api_url, access_id, cert_file, key_file) are NOT
+# in this file. They are injected at job-run time by the AWX credential
+# of type "Akeyless (Cert Auth)". Putting them here would either be
+# ignored or, worse, encourage committing cert paths to Git.
+#
+# Filename rule: the inventory plugin only accepts files whose name ends
+# with `akeyless.yml` or `akeyless.yaml`. AWX silently skips other names.
+
+plugin: akeyless.awx_integration.akeyless
+
+# Discover every static secret under this path and attach each as a host_var.
+# A secret at /apps/prod/db/password becomes the variable `db_password`.
+secret_path_prefix: /apps/prod
+
+# Hosts to attach the discovered variables to. In production these are real
+# inventory targets. The examples here are placeholders for the smoke test.
+hosts:
+  - app01.example.com
+  - app02.example.com
+
+# Umbrella group containing every host listed above.
+default_group: prod_apps

@@ -84,10 +84,11 @@ if you choose [option B in step 03](03-execution-environment.md).
 akeyless --version
 ```
 
-Expected output (any 1.14x.x or newer is fine):
+Expected output (CLI 1.139 or newer; the build hash on the right
+varies):
 
 ```
-1.142.0
+Version: 1.139.0.fb23a68
 ```
 
 ## Information to gather

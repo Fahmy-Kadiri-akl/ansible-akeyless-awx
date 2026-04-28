@@ -66,16 +66,20 @@ two.
 
 ## Step 3: run a playbook that consumes a secret
 
-### Add a playbook to the project repo
+### Use the example playbook in this repo
 
-Commit a minimal playbook to the same Git repo as
-`inventory.akeyless.yml`:
+If your AWX project points at this repo, a smoke-test playbook is
+already committed at `examples/smoke_test.yml`. Use it directly with
+the **Playbook** field set to `examples/smoke_test.yml`.
+
+### Or, write your own
 
 ```yaml
 # example_playbook.yml
 - name: Use an Akeyless-sourced secret as an ordinary host_var
   hosts: prod_apps
   gather_facts: false
+  connection: local
   tasks:
     - name: Show the variable was injected (length only, never print values)
       ansible.builtin.debug:
@@ -86,7 +90,13 @@ Notice what is not in this playbook: no `akeyless login`, no
 `get_secret_value` lookup, no cert handling. The secret is a plain
 `host_var`.
 
-Push the commit.
+`connection: local` is set because the example hosts in
+`examples/inventory.akeyless.yml` (`app01.example.com`,
+`app02.example.com`) are fictional placeholders. Real inventories
+pointing at reachable targets do not need the `connection: local`
+line; drop it for production.
+
+Commit and push.
 
 ### Create a Job Template
 
@@ -124,6 +134,23 @@ integration is wired correctly end to end.
 Never print secret values in playbook output. Use `| length` or
 `| hash('sha256') | truncate(8, true, '')` to confirm presence without
 leaking the value into job logs.
+
+## A note on visibility of secret values
+
+AWX masks `key_data` and host-variable secret values in the UI. It
+does **not** encrypt host-variable values at rest in the way it does
+credential secrets. AWX administrators can read every host_var in
+plaintext via the API:
+
+```bash
+GET /api/v2/hosts/<id>/variable_data/
+```
+
+Treat this the same as any other admin-tier capability: the protection
+boundary is "who is an AWX admin," not "values are encrypted." Limit
+who has admin or organization-admin roles, and prefer Akeyless-side
+role scoping (one access role per environment) so a compromised AWX
+admin cannot reach beyond the access role's path prefix.
 
 ## What you have at this point
 

@@ -66,10 +66,38 @@ from these env vars without any explicit lookup code.
 The credential type appears under **Administration -> Credential Types**
 with **Kind: Cloud**.
 
-The credential type can also be created programmatically using
-`awx.awx.credential_type` against an existing AWX. The reference playbook
-at `tests/integration/awx-setup.yml` shows the full provisioning,
-including this step.
+> **Important:** the canonical YAML at
+> `extensions/awx/credential_types/akeyless_cert_auth.yml` writes the
+> injector values as plain Jinja (`{{ tower.filename.cert }}`). Do
+> **not** wrap them in `{% raw %}` markers when pasting into the AWX
+> UI; AWX would store the literal text and the inventory plugin would
+> try to open a file at the path `{{ tower.filename.cert }}`. The
+> reference provisioning playbook at `tests/integration/awx-setup.yml`
+> uses an inline copy with `{% raw %}` blocks because Ansible itself
+> templates the YAML before posting it to AWX. The two files are
+> intentionally different.
+
+### Or, via API
+
+If you prefer the API or are running this through GitOps, post the
+inputs and injectors directly:
+
+```bash
+curl -sk -u "<admin>:<pass>" \
+  -H 'Content-Type: application/json' \
+  -X POST https://<awx-host>/api/v2/credential_types/ \
+  -d '{
+    "name": "Akeyless (Cert Auth)",
+    "description": "Authenticate to Akeyless with a client certificate.",
+    "kind": "cloud",
+    "inputs": { /* paste the inputs block as JSON */ },
+    "injectors": { /* paste the injectors block as JSON */ }
+  }'
+```
+
+A reference Ansible-based provisioning playbook is at
+`tests/integration/awx-setup.yml`. It uses
+`awx.awx.credential_type` with the inline injector dict.
 
 ## Step 2: create a credential instance
 
