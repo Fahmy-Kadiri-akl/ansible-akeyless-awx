@@ -276,16 +276,23 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         self._resolve_cert_material(opts)
         self._resolve_k8s_token(opts)
 
-        api_client = self._build_api_client(opts)
+        # Two API clients: one for the auth handshake, one for data calls.
+        # Auth has different endpoint constraints per access_type (cert auth
+        # must hit the SaaS, k8s auth must hit the customer gateway), but
+        # rotated and dynamic secret reads always need the customer gateway
+        # when one is configured. Static reads work fine against either.
+        auth_api_client = self._build_auth_api_client(opts)
         authenticator = AkeylessAuthenticator(opts)
         try:
             authenticator.validate()
-            auth_response = authenticator.authenticate(api_client)
+            auth_response = authenticator.authenticate(auth_api_client)
         except ApiException as e:
             raise AnsibleError('Akeyless authentication failed: ' + AkeylessHelper.build_api_err_msg(e, 'auth'))
         except Exception as e:
             raise AnsibleError('Akeyless authentication failed: %s' % str(e))
         token = auth_response.token
+
+        api_client = self._build_data_api_client(opts)
 
         secrets_cfg = list(self.get_option('secrets') or [])
         for entry in secrets_cfg:
@@ -525,11 +532,30 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
                 return d
         return str(resp)
 
-    def _build_api_client(self, opts):
+    def _build_auth_api_client(self, opts):
+        # Endpoint for the auth handshake. Cert and api-key auth must
+        # terminate at the SaaS (customer gateways do not pass TLS client
+        # certs through). k8s auth must terminate at the gateway.
         if opts.get('access_type') == 'k8s' and opts.get('akeyless_gateway_url'):
             api_url = self._normalize_gateway_url(opts['akeyless_gateway_url'])
         else:
             api_url = opts.get('akeyless_api_url') or 'https://api.akeyless.io'
+        return self._make_api_client(api_url)
+
+    def _build_data_api_client(self, opts):
+        # Endpoint for post-auth API calls (list-items, get-secret-value,
+        # get-rotated-secret-value, get-dynamic-secret-value). Rotated and
+        # dynamic reads require the customer gateway because Akeyless
+        # forwards the rotation/CREATE call to the target through it.
+        # If a gateway URL is configured, prefer it; otherwise fall back
+        # to the SaaS API (works for static reads).
+        if opts.get('akeyless_gateway_url'):
+            api_url = self._normalize_gateway_url(opts['akeyless_gateway_url'])
+        else:
+            api_url = opts.get('akeyless_api_url') or 'https://api.akeyless.io'
+        return self._make_api_client(api_url)
+
+    def _make_api_client(self, api_url):
         config = akeyless.Configuration(host=api_url)
         ca_bundle = self.get_option('ca_bundle')
         validate = self.get_option('validate_certs')

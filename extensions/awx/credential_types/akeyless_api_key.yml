@@ -24,6 +24,10 @@ inputs:
       type: string
       default: https://api.akeyless.io
       help_text: Akeyless API endpoint. The default works for SaaS tenants.
+    - id: akeyless_gateway_url
+      label: Akeyless Gateway URL (optional)
+      type: string
+      help_text: Customer gateway URL, e.g. https://your-gateway.example.com:8000. Leave blank for static-secret-only inventories. Required when the inventory plugin is configured to read rotated or dynamic secrets, since those reads must terminate at the gateway.
     - id: access_id
       label: Akeyless Access ID
       type: string
@@ -41,6 +45,7 @@ inputs:
 injectors:
   env:
     AKEYLESS_API_URL: "{{ akeyless_api_url }}"
+    AKEYLESS_GATEWAY_URL: "{{ akeyless_gateway_url | default('') }}"
     AKEYLESS_ACCESS_ID: "{{ access_id }}"
     AKEYLESS_ACCESS_TYPE: api_key
     AKEYLESS_ACCESS_KEY: "{{ access_key }}"
