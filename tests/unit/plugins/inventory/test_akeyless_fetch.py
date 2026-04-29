@@ -63,6 +63,8 @@ def test_rotated_dispatches_per_secret(plugin, api_client):
 
 
 def test_dynamic_passes_args_and_returns_dict(plugin, api_client):
+    # Neutral field names so the test data does not trip secret-detection
+    # tools that match dict shapes containing literal "password" / "token".
     api_client.get_dynamic_secret_value.return_value = {
         'field_a': 'value_a',
         'field_b': 'value_b',
