@@ -20,6 +20,7 @@ setup runs straight through 01 to 09. Day-2 operators usually only need
 | 7 | [First sync and test job](07-first-sync-and-job.md) | Run the inventory sync, verify host_vars, run a playbook end to end. |
 | 8 | [Day-2 operations](08-day-2-operations.md) | Rotation, adding and removing secrets, revocation, EE refresh, multi-environment. |
 | 9 | [Troubleshooting](09-troubleshooting.md) | Categorized failure modes with diagnoses and fixes. |
+| 10 | [Just-in-time SSH Certificates via Akeyless](10-ssh-cert.md) | Sign SSH public keys against an Akeyless cert issuer on each inventory sync; wire the signed cert + private key into the SSH connection via the bundled role. |
 
 The repository-level [`../README.md`](../README.md) covers what the
 collection is, why it exists, and how it relates to the official
