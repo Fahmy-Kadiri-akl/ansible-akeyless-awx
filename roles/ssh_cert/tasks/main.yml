@@ -1,0 +1,50 @@
+---
+- name: Confirm the inventory plugin attached the SSH cert host_vars
+  ansible.builtin.assert:
+    that:
+      - akeyless_ssh_signed_cert is defined
+      - akeyless_ssh_private_key is defined
+      - akeyless_ssh_cert_username is defined
+    fail_msg: >
+      akeyless.awx_integration.ssh_cert role expected the host_vars
+      `akeyless_ssh_signed_cert`, `akeyless_ssh_private_key`, and
+      `akeyless_ssh_cert_username` to be present. They are set by the
+      inventory plugin when `ssh_cert_issuer` is configured. Either the
+      inventory was synced without that option, or this play is targeting
+      hosts the plugin did not write to.
+
+- name: Ensure cert files directory exists on the controller
+  ansible.builtin.file:
+    path: "{{ akeyless_ssh_cert_files_dir }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  run_once: true
+  changed_when: false
+
+- name: Write the SSH private key for {{ inventory_hostname }}
+  ansible.builtin.copy:
+    content: "{{ akeyless_ssh_private_key }}"
+    dest: "{{ akeyless_ssh_cert_files_dir }}/{{ inventory_hostname }}.key"
+    mode: "0600"
+    force: "{{ akeyless_ssh_cert_overwrite }}"
+  delegate_to: localhost
+  no_log: true
+  changed_when: false
+
+- name: Write the Akeyless-signed SSH certificate for {{ inventory_hostname }}
+  ansible.builtin.copy:
+    content: "{{ akeyless_ssh_signed_cert }}"
+    dest: "{{ akeyless_ssh_cert_files_dir }}/{{ inventory_hostname }}-cert.pub"
+    mode: "0644"
+    force: "{{ akeyless_ssh_cert_overwrite }}"
+  delegate_to: localhost
+  changed_when: false
+
+- name: Wire the SSH connection to use the materialized key + cert
+  ansible.builtin.set_fact:
+    ansible_user: "{{ akeyless_ssh_cert_username }}"
+    ansible_ssh_private_key_file: "{{ akeyless_ssh_cert_files_dir }}/{{ inventory_hostname }}.key"
+    ansible_ssh_extra_args: >-
+      -o CertificateFile={{ akeyless_ssh_cert_files_dir }}/{{ inventory_hostname }}-cert.pub
+      -o IdentitiesOnly=yes

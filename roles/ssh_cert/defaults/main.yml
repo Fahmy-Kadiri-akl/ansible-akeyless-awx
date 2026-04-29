@@ -1,0 +1,9 @@
+---
+# Where to write the materialized key + cert files. The default path lives
+# under the per-job runner workspace AWX creates, which is wiped when the
+# job pod terminates.
+akeyless_ssh_cert_files_dir: "/tmp/akeyless-ssh"
+
+# Set to true to overwrite key/cert files even when they already exist.
+# Default true so each play picks up the freshest cert from the inventory.
+akeyless_ssh_cert_overwrite: true

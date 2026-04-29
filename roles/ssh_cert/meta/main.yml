@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  author: Fahmy Kadiri
+  description: >
+    Materialize the SSH private key and Akeyless-signed certificate that the
+    akeyless.awx_integration.akeyless inventory plugin attaches as host_vars,
+    then point the SSH connection at them. Import this role at the top of any
+    play that targets hosts where the inventory was synced with
+    ssh_cert_issuer set.
+  license: MIT
+  min_ansible_version: "2.15"
+  galaxy_tags:
+    - akeyless
+    - awx
+    - ssh
+    - certificate
+
+dependencies: []

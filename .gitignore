@@ -17,6 +17,10 @@ ee/akeyless-awx_integration.tar.gz
 # Local Claude Code briefing file. Never commit.
 CLAUDE.md
 
+# Local working notes (commands that have been verified end-to-end).
+# These get harvested into docs but never shipped raw.
+notes/
+
 # Throwaway secrets and cert material. Never commit.
 test-fixtures/
 *.key
