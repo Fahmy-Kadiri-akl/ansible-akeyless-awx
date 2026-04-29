@@ -4,7 +4,7 @@ An Ansible Collection that wires [Akeyless](https://www.akeyless.io/) secrets
 into [AWX](https://github.com/ansible/awx) and
 [Ansible Automation Platform](https://www.ansible.com/products/automation-platform)
 at the platform level. Playbooks consume the secrets as ordinary Ansible
-variables. There are no `akeyless login` tasks, no lookup expressions, and no
+variables. There are no `akeyless auth` tasks, no lookup expressions, and no
 Akeyless code in any playbook.
 
 The audience is platform engineers and AWX/AAP administrators who run
@@ -14,7 +14,7 @@ authentication and secret retrieval.
 ## What problem this solves
 
 Customers operating AWX/AAP against Akeyless typically embed explicit
-`akeyless login` and `akeyless get-secret-value` tasks inside every play.
+`akeyless auth` and `akeyless get-secret-value` tasks inside every play.
 That couples every playbook to Akeyless, multiplies the maintenance
 surface, and makes credential rotation or secret addition expensive.
 
