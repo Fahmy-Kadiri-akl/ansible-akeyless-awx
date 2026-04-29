@@ -23,7 +23,8 @@ This collection moves the integration up one layer.
 | Concern | Where it lives now |
 |---|---|
 | Authentication to Akeyless | An AWX Custom Credential Type, configured once. The collection ships three: cert, API-key, and Kubernetes auth. |
-| Secret retrieval | An Ansible Inventory Plugin that runs at inventory-sync time and lands values as `host_vars` and `group_vars`. |
+| Secret retrieval | An Ansible Inventory Plugin that runs at inventory-sync time and lands values as `host_vars` and `group_vars`. Supports static, rotated, and dynamic Akeyless secrets. |
+| Just-in-time SSH certificates | Same inventory plugin signs SSH public keys against an Akeyless cert issuer on each sync; a bundled role wires the signed cert + private key into the SSH connection at job-run time. |
 | Adding a new secret | Create it under the configured path in Akeyless. The next inventory sync picks it up. No AWX or playbook change. |
 | Rotating a secret | Rotate it in Akeyless. The next inventory sync picks up the new value. No AWX or playbook change. |
 
@@ -54,6 +55,7 @@ them. Both collections must be installed in your Execution Environment.
 | 7 | [First sync and test job](runbooks/07-first-sync-and-job.md) | Run the inventory sync, verify host_vars, run a playbook end to end. |
 | 8 | [Day-2 operations](runbooks/08-day-2-operations.md) | Rotation, adding and removing secrets, revocation, EE refresh and pinning. |
 | 9 | [Troubleshooting](runbooks/09-troubleshooting.md) | Categorized failure modes with diagnoses and fixes. |
+| 10 | [Just-in-time SSH Certificates via Akeyless](runbooks/10-ssh-cert.md) | Sign SSH public keys against an Akeyless cert issuer on each inventory sync; wire the signed cert + private key into the SSH connection via the bundled role. |
 
 ## Architecture at a glance
 

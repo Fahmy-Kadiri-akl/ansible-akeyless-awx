@@ -74,18 +74,109 @@ hosts:
 default_group: prod_apps
 ```
 
+### Rotated and dynamic secrets
+
+Beyond static secrets, the plugin also dispatches lookups to the
+appropriate Akeyless API for rotated and dynamic secrets. Set the
+`type:` field on a `secrets:` entry, or include the type in
+`secret_types:` to have path-discovery pick them up.
+
+```yaml
+plugin: akeyless.awx_integration.akeyless
+hosts:
+  - app01.example.com
+
+# Path discovery now also returns rotated and dynamic items
+secret_path_prefix: /apps/prod
+secret_types:
+  - static-secret
+  - rotated-secret
+  - dynamic-secret
+
+# Explicit entries can override or augment discovered ones
+secrets:
+  - name: /apps/prod/db_admin_password
+    var: db_admin_password
+    type: rotated-secret
+  - name: /apps/prod/dynamic-mysql
+    var: dynamic_mysql_creds
+    type: dynamic-secret
+    args:                # passed to get-dynamic-secret-value
+      database: orders
+```
+
+Behavior per type:
+
+| Type | API call | Returned shape | Per-sync behavior |
+|---|---|---|---|
+| `static-secret` | `get_secret_value` (batched) | string | Same value until the secret is updated. |
+| `rotated-secret` | `get_rotated_secret_value` (per secret) | string (current rotated value) | Each sync sees the current value. With **Update on launch** enabled, every job sees the value Akeyless has rotated to. |
+| `dynamic-secret` | `get_dynamic_secret_value` (per secret) | dict (multi-field credentials) | Each sync mints a fresh credential with a TTL. With **Update on launch** enabled, every job gets a brand-new credential. |
+
+A dynamic secret typically returns multiple fields (`username`,
+`password`, `ttl`, ...), so its host_var is attached as a dict. Access
+sub-fields with normal Jinja, e.g. `{{ dynamic_mysql_creds.username }}`.
+
+> **Per-sync TTL caveat.** Dynamic-secret credentials carry a TTL set
+> by the Akeyless target. With `update_on_launch: true` the credential
+> is minted seconds before the play starts, so a 5-minute TTL is
+> usually fine. Long-running plays that exceed the TTL will have their
+> credentials revoked mid-play and silently fail. If you have plays
+> that run longer than the shortest dynamic-secret TTL, raise the TTL
+> on the Akeyless side.
+
+### SSH-cert signing (just-in-time)
+
+For just-in-time signed SSH certificates: configure the plugin with
+the issuer name, the username to sign for, and where the SSH keypair
+lives. On each sync the plugin calls `get-ssh-certificate` and
+attaches three host_vars per host:
+
+| host_var | Source |
+|---|---|
+| `akeyless_ssh_signed_cert` | The signed certificate string returned by Akeyless. |
+| `akeyless_ssh_private_key` | Read from the static secret named in `ssh_cert_private_key_secret`. |
+| `akeyless_ssh_cert_username` | The `ssh_cert_username` option, mirrored back for the role to consume. |
+
+Example (also committed at `examples/ssh-cert.akeyless.yml`):
+
+```yaml
+plugin: akeyless.awx_integration.akeyless
+hosts:
+  - app01.example.com
+default_group: ssh_cert_demo
+
+ssh_cert_issuer: /5-SSH-CERT-ISSUER/SSH/your-issuer
+ssh_cert_username: ubuntu
+ssh_cert_private_key_secret: /apps/prod/ssh_private_key
+ssh_cert_public_key: ssh-rsa AAAA...your-public-key... user@host
+```
+
+In the playbook, `import_role: name=akeyless.awx_integration.ssh_cert`
+at the top of the play. The role materializes the cert and key into
+tempfiles inside the EE pod and wires `ansible_user`,
+`ansible_ssh_private_key_file`, and `ansible_ssh_extra_args` to use
+them. See [`runbooks/10-ssh-cert.md`](10-ssh-cert.md) for the full
+SSH-cert flow including the prerequisites on the Akeyless side.
+
 ### All supported options
 
 | Option | Purpose |
 |---|---|
 | `plugin` | Always `akeyless.awx_integration.akeyless`. Required. |
 | `secret_path_prefix` | Akeyless path prefix to auto-discover under. |
-| `secrets` | Explicit `[{name, var}, ...]` mapping. |
+| `secrets` | Explicit `[{name, var, type, args}, ...]` mapping. `type` defaults to `static-secret`; `args` is only honored for `dynamic-secret`. |
 | `var_name_template` | How to derive variable names from discovered paths. Default `{relpath}`. Other placeholders: `{basename}` (last segment) and `{fullname}` (full path). Non-identifier characters are replaced with `_`. |
-| `secret_types` | Akeyless item types to discover. Default `['static-secret']`. |
+| `secret_types` | Akeyless item types to discover. Default `['static-secret']`. Other valid values: `rotated-secret`, `dynamic-secret`. |
 | `hosts` | List of host names to attach variables to. |
 | `groups` | Mapping of `group_name: [host, ...]`. Variables are attached at the group level. |
 | `default_group` | Umbrella group containing every host or group created. Default `akeyless_managed`. |
+| `ssh_cert_issuer` | Akeyless SSH cert issuer name. When set, the plugin signs `ssh_cert_public_key` on each sync. |
+| `ssh_cert_username` | Cert subject. Must appear in the issuer's `allowed_users` list (or match a wildcard). |
+| `ssh_cert_principals` | Optional list of additional valid principals. |
+| `ssh_cert_public_key` | Inline SSH public key to sign. Mutually exclusive with `ssh_cert_public_key_secret`. |
+| `ssh_cert_public_key_secret` | Akeyless static-secret path holding the SSH public key. Takes precedence over `ssh_cert_public_key`. |
+| `ssh_cert_private_key_secret` | Akeyless static-secret path holding the matching SSH private key. Required when `ssh_cert_issuer` is set. |
 
 Do not put `access_id`, `cert_file`, `key_file`, or `akeyless_api_url` in
 this YAML. They are injected by the AWX credential at job-run time. If you
