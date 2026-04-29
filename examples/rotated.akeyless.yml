@@ -1,0 +1,31 @@
+# Example inventory source for rotated secrets only.
+#
+# A rotated-secret value comes back as a dict with the credential
+# fields the rotator manages. For a postgresql password rotation, the
+# shape is {username, password}. The dict is attached as a host_var,
+# so playbooks reference sub-fields with normal Jinja:
+#
+#   ansible_user:     "{{ db_admin.username }}"
+#   ansible_password: "{{ db_admin.password }}"
+#
+# Rotated reads must terminate at a customer Akeyless gateway; set
+# the gateway URL on the AWX credential, not in this YAML.
+
+plugin: akeyless.awx_integration.akeyless
+
+hosts:
+  - app01.example.com
+default_group: prod_apps
+
+# Path discovery for rotated items only.
+secret_path_prefix: /apps/prod
+secret_types:
+  - rotated-secret
+
+# Or specify rotated items explicitly when you want a fixed
+# variable-name contract.
+#
+# secrets:
+#   - name: /apps/prod/db_admin_password
+#     var: db_admin
+#     type: rotated-secret

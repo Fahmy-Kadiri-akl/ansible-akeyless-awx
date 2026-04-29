@@ -1,0 +1,40 @@
+# Example inventory source for dynamic secrets only.
+#
+# A dynamic-secret value is freshly minted on every sync. The
+# response shape depends on the producer; for postgresql the fields
+# are {id, password, ttl_in_minutes, user}. Attached as a dict
+# host_var, accessed with Jinja:
+#
+#   ansible_user:     "{{ dyn_db.user }}"
+#   ansible_password: "{{ dyn_db.password }}"
+#
+# Caveats:
+#   - Dynamic reads must terminate at a customer Akeyless gateway;
+#     set the gateway URL on the AWX credential, not in this YAML.
+#   - The credential's TTL must be longer than the longest play that
+#     uses it. Akeyless revokes on TTL expiry whether or not the
+#     play is still running.
+#   - Each sync mints a brand-new credential. With Update on launch
+#     enabled on the inventory source, every job gets a fresh one.
+
+plugin: akeyless.awx_integration.akeyless
+
+hosts:
+  - app01.example.com
+default_group: prod_apps
+
+# Path discovery for dynamic items only.
+secret_path_prefix: /apps/prod
+secret_types:
+  - dynamic-secret
+
+# Explicit dynamic entries can pass producer-specific runtime args
+# via the args key. The args dict is forwarded as the
+# get-dynamic-secret-value request's args parameter.
+#
+# secrets:
+#   - name: /apps/prod/dynamic-mysql-readonly
+#     var: dyn_mysql
+#     type: dynamic-secret
+#     args:
+#       database: orders

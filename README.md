@@ -107,6 +107,14 @@ For the data-flow walkthrough that maps each arrow to a step, see
 | `extensions/awx/credential_types/akeyless_cert_auth.yml` | Source YAML for the cert-auth Custom Credential Type. |
 | `extensions/awx/credential_types/akeyless_api_key.yml` | Source YAML for the API-key Custom Credential Type. |
 | `extensions/awx/credential_types/akeyless_k8s_auth.yml` | Source YAML for the Kubernetes-auth Custom Credential Type. |
+| `examples/inventory.akeyless.yml` | Inventory source example: static secrets only (the simplest case). |
+| `examples/rotated.akeyless.yml` | Inventory source example: rotated secrets only. |
+| `examples/dynamic.akeyless.yml` | Inventory source example: dynamic secrets only. |
+| `examples/multi-secret.akeyless.yml` | Inventory source example: static + rotated + dynamic combined under one path prefix. |
+| `examples/ssh-cert.akeyless.yml` | Inventory source example: just-in-time SSH certificate signing (paired with `roles/ssh_cert/`). |
+| `examples/smoke_test.yml` | Playbook that asserts a sync attached at least one host_var. |
+| `examples/ssh_cert_smoke.yml` | Playbook that imports the `ssh_cert` role and asserts the wired SSH connection facts. |
+| `roles/ssh_cert/` | Role that materializes Akeyless-signed SSH cert + key into tempfiles and sets `ansible_ssh_extra_args`. |
 | `ee/` | `ansible-builder` v3 context that produces the reference Execution Environment image. |
 | `ee/execution-environment.yml` | EE definition: base image, collections, Python deps. |
 | `ee/requirements.txt` | Python deps baked into the EE (currently the `akeyless` SDK). |

@@ -81,41 +81,28 @@ appropriate Akeyless API for rotated and dynamic secrets. Set the
 `type:` field on a `secrets:` entry, or include the type in
 `secret_types:` to have path-discovery pick them up.
 
-```yaml
-plugin: akeyless.awx_integration.akeyless
-hosts:
-  - app01.example.com
-
-# Path discovery now also returns rotated and dynamic items
-secret_path_prefix: /apps/prod
-secret_types:
-  - static-secret
-  - rotated-secret
-  - dynamic-secret
-
-# Explicit entries can override or augment discovered ones
-secrets:
-  - name: /apps/prod/db_admin_password
-    var: db_admin_password
-    type: rotated-secret
-  - name: /apps/prod/dynamic-mysql
-    var: dynamic_mysql_creds
-    type: dynamic-secret
-    args:                # passed to get-dynamic-secret-value
-      database: orders
-```
-
 Behavior per type:
 
 | Type | API call | Returned shape | Per-sync behavior |
 |---|---|---|---|
 | `static-secret` | `get_secret_value` (batched) | string | Same value until the secret is updated. |
-| `rotated-secret` | `get_rotated_secret_value` (per secret) | string (current rotated value) | Each sync sees the current value. With **Update on launch** enabled, every job sees the value Akeyless has rotated to. |
-| `dynamic-secret` | `get_dynamic_secret_value` (per secret) | dict (multi-field credentials) | Each sync mints a fresh credential with a TTL. With **Update on launch** enabled, every job gets a brand-new credential. |
+| `rotated-secret` | `get_rotated_secret_value` (per secret) | dict with the credential fields the rotator manages (e.g. `{username, password}` for a postgresql password rotator) | Each sync sees the current rotated value. With **Update on launch** enabled, every job sees the value Akeyless most recently rotated to. |
+| `dynamic-secret` | `get_dynamic_secret_value` (per secret) | dict (multi-field ephemeral credential, e.g. `{id, password, ttl_in_minutes, user}` for a postgresql producer) | Each sync mints a fresh credential with a TTL. With **Update on launch** enabled, every job gets a brand-new credential. |
 
-A dynamic secret typically returns multiple fields (`username`,
-`password`, `ttl`, ...), so its host_var is attached as a dict. Access
-sub-fields with normal Jinja, e.g. `{{ dynamic_mysql_creds.username }}`.
+Both rotated and dynamic come back as dicts; access sub-fields with
+normal Jinja:
+
+```yaml
+ansible_user: "{{ db_admin.username }}"
+ansible_password: "{{ db_admin.password }}"
+```
+
+> **Important: rotated and dynamic reads need a customer gateway.**
+> The plugin sends data calls (`list-items`, `get-rotated-secret-value`,
+> `get-dynamic-secret-value`) to whichever URL is on the credential's
+> **Akeyless Gateway URL** field. The auth handshake itself still
+> goes to the SaaS for cert and api-key auth. Set the gateway URL on
+> the AWX credential — see [`step 05`](05-awx-credential-type.md#or-via-api).
 
 > **Per-sync TTL caveat.** Dynamic-secret credentials carry a TTL set
 > by the Akeyless target. With `update_on_launch: true` the credential
@@ -124,6 +111,16 @@ sub-fields with normal Jinja, e.g. `{{ dynamic_mysql_creds.username }}`.
 > credentials revoked mid-play and silently fail. If you have plays
 > that run longer than the shortest dynamic-secret TTL, raise the TTL
 > on the Akeyless side.
+
+Per-type example files committed in this repo:
+
+| File | Scope |
+|---|---|
+| [`examples/inventory.akeyless.yml`](../examples/inventory.akeyless.yml) | Static only (the simplest case). |
+| [`examples/rotated.akeyless.yml`](../examples/rotated.akeyless.yml) | Rotated only. |
+| [`examples/dynamic.akeyless.yml`](../examples/dynamic.akeyless.yml) | Dynamic only. |
+| [`examples/multi-secret.akeyless.yml`](../examples/multi-secret.akeyless.yml) | All three under one `secret_path_prefix`. |
+| [`examples/ssh-cert.akeyless.yml`](../examples/ssh-cert.akeyless.yml) | SSH-cert signing (covered in [runbook 10](10-ssh-cert.md)). |
 
 ### SSH-cert signing (just-in-time)
 
