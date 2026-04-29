@@ -100,7 +100,7 @@ Look for a `path` that includes the prefix you plan to use (for example
 
 To confirm items actually exist under that path, list them with a
 short-lived token from a successful CLI handshake (see
-[step 04](04-akeyless-cert-auth.md)):
+[step 04](04-akeyless-auth.md)):
 
 ```bash
 akeyless list-items --path /apps/prod --type static-secret --token t-...
@@ -115,8 +115,8 @@ inventory-update job log.
 
 ## Local tools
 
-You need these only on your laptop (for cert-auth verification in
-[step 04](04-akeyless-cert-auth.md)) and on the machine that builds the EE
+You need these only on your laptop (for CLI auth verification in
+[step 04](04-akeyless-auth.md)) and on the machine that builds the EE
 if you choose [option B in step 03](03-execution-environment.md).
 
 - [ ] [`akeyless` CLI](https://docs.akeyless.io/docs/cli) installed.
@@ -138,7 +138,7 @@ Version: 1.139.0.fb23a68
 
 ## Information to gather
 
-Collect the following before starting [step 04](04-akeyless-cert-auth.md).
+Collect the following before starting [step 04](04-akeyless-auth.md).
 You will paste each into AWX during steps 4 to 6.
 
 | Parameter | Description | Example |
@@ -153,7 +153,7 @@ You will paste each into AWX during steps 4 to 6.
 The credential's PEM payloads must not have trailing whitespace inside the
 BEGIN/END headers, and the key must be unencrypted (no passphrase). The
 fastest way to validate is the CLI handshake in
-[step 04](04-akeyless-cert-auth.md).
+[step 04](04-akeyless-auth.md).
 
 ## Next steps
 

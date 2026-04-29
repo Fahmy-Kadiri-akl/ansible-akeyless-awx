@@ -30,7 +30,7 @@ Diagnosis: cert auth is failing inside the EE.
 Steps to isolate:
 
 1. Re-run the CLI verification from
-   [`04-akeyless-cert-auth.md`](04-akeyless-cert-auth.md) from a shell
+   [`04-akeyless-auth.md`](04-akeyless-auth.md) from a shell
    on your laptop, with the same cert and key. If that fails too, the
    failure is in Akeyless, the cert, or the role. Fix it there before
    touching AWX again.
@@ -153,7 +153,7 @@ default, pass TLS client cert payloads through to the gateway pod, so
 cert-auth handshakes fail there.
 
 Fix: switch the URL to the SaaS API at `https://api.akeyless.io`. See
-[`04-akeyless-cert-auth.md`](04-akeyless-cert-auth.md) for the
+[`04-akeyless-auth.md`](04-akeyless-auth.md) for the
 endpoint distinction in detail.
 
 ## EE image pull fails with "manifest unknown" or "unauthorized"
@@ -194,5 +194,5 @@ with:
 3. The full **Output** of the failing inventory sync, with secret
    values redacted.
 4. Whether the equivalent CLI cert-auth handshake from
-   [`04-akeyless-cert-auth.md`](04-akeyless-cert-auth.md) succeeds from
+   [`04-akeyless-auth.md`](04-akeyless-auth.md) succeeds from
    the same network.

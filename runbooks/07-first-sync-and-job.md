@@ -35,7 +35,7 @@ The two most common first-time failures are:
 - `ModuleNotFoundError: No module named 'akeyless'`. The wrong EE is on
   the source.
 - `401 Unauthorized`. Cert auth that worked in
-  [step 04](04-akeyless-cert-auth.md) no longer works once routed through
+  [step 04](04-akeyless-auth.md) no longer works once routed through
   AWX. Almost always: the credential's **Akeyless API URL** is a customer
   gateway URL instead of `https://api.akeyless.io`.
 

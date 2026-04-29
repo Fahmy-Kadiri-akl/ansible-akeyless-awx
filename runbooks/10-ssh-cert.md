@@ -94,7 +94,7 @@ A line that begins with `rsa-sha2-256-cert-v01@openssh.com` (or
 
 - The role bound to your cert auth method has read on the issuer.
 - The username `ubuntu` is in the issuer's `allowed_users`.
-- The cert auth itself works (covered in [step 04](04-akeyless-cert-auth.md)).
+- The cert auth itself works (covered in [step 04](04-akeyless-auth.md)).
 
 If you see `not part of allowed user list`, fix the username to one
 the issuer accepts.

@@ -69,7 +69,7 @@ The endpoint a given auth method actually hits depends on the method:
   Kubernetes TokenReview to validate the ServiceAccount JWT, then
   proxies onward to the SaaS for the secret reads.
 
-See [`04-akeyless-cert-auth.md`](04-akeyless-cert-auth.md) for the
+See [`04-akeyless-auth.md`](04-akeyless-auth.md) for the
 endpoint distinction in detail.
 
 ## Data flow: one inventory sync, end to end
@@ -168,7 +168,7 @@ AWX EE container --HTTPS:443--> api.akeyless.io
 > the Akeyless SaaS. Most customer gateway ingresses terminate TLS at the
 > edge and do not forward TLS client certs through to the gateway pod, so
 > cert-auth handshakes fail there. See
-> [`04-akeyless-cert-auth.md`](04-akeyless-cert-auth.md) for the endpoint
+> [`04-akeyless-auth.md`](04-akeyless-auth.md) for the endpoint
 > distinction in detail.
 
 ## Next steps

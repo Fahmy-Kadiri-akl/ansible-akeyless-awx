@@ -49,7 +49,7 @@ them. Both collections must be installed in your Execution Environment.
 | 1 | [Architecture overview](runbooks/01-architecture-overview.md) | Components, data flow, and a mermaid diagram of an inventory sync end to end. |
 | 2 | [Prerequisites](runbooks/02-prerequisites.md) | Tools, access, and information to gather before starting. |
 | 3 | [Execution Environment](runbooks/03-execution-environment.md) | Use the published reference EE or build your own with `ansible-builder`. |
-| 4 | [Akeyless cert-auth verification](runbooks/04-akeyless-cert-auth.md) | Confirm cert auth works against the SaaS API before touching AWX. |
+| 4 | [Akeyless auth verification](runbooks/04-akeyless-auth.md) | Confirm CLI auth (cert, API key, or k8s) works against the configured Akeyless endpoint before touching AWX. |
 | 5 | [AWX Custom Credential Type](runbooks/05-awx-credential-type.md) | Register the credential type and create a credential of that type. |
 | 6 | [Inventory source configuration](runbooks/06-inventory-source.md) | Project, inventory, and inventory-source wiring with the credential and EE. |
 | 7 | [First sync and test job](runbooks/07-first-sync-and-job.md) | Run the inventory sync, verify host_vars, run a playbook end to end. |
@@ -130,7 +130,7 @@ For the data-flow walkthrough that maps each arrow to a step, see
 
 1. Verify the [prerequisites](runbooks/02-prerequisites.md) are met.
 2. Pick or build an [Execution Environment](runbooks/03-execution-environment.md).
-3. [Verify Akeyless cert-auth](runbooks/04-akeyless-cert-auth.md) end to end with the CLI.
+3. [Verify Akeyless authentication](runbooks/04-akeyless-auth.md) end to end with the CLI.
 4. Register the [AWX Custom Credential Type](runbooks/05-awx-credential-type.md) and create a credential of that type.
 5. Wire up the [inventory source](runbooks/06-inventory-source.md) using a project of inventory YAMLs.
 6. Run the [first sync and a test job](runbooks/07-first-sync-and-job.md).

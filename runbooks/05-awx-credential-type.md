@@ -180,7 +180,7 @@ you prefer Ansible-driven provisioning.
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| **Akeyless API URL** | string | `https://api.akeyless.io` | The Akeyless SaaS API. Do not change this to a customer gateway URL; see [`04-akeyless-cert-auth.md`](04-akeyless-cert-auth.md) for the endpoint distinction. |
+| **Akeyless API URL** | string | `https://api.akeyless.io` | The Akeyless SaaS API. Do not change this to a customer gateway URL; see [`04-akeyless-auth.md`](04-akeyless-auth.md) for the endpoint distinction. |
 | **Akeyless Access ID** | string | required | For example `p-XXXXXXXXXXXXXX`. From the cert auth method in Akeyless. |
 | **Client Certificate (PEM)** | multiline string | required | The full PEM, including the `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` lines. |
 | **Client Private Key (PEM)** | multiline string, secret | required | Unencrypted private key matching the certificate. AWX masks this on subsequent views. |

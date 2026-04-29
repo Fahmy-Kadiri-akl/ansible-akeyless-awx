@@ -171,4 +171,4 @@ later runbook steps).
 
 ## Next steps
 
-- [Akeyless cert-auth verification](04-akeyless-cert-auth.md). Confirm cert auth works against the SaaS API before touching any AWX object that depends on it.
+- [Akeyless auth verification](04-akeyless-auth.md). Confirm CLI auth (cert, API key, or k8s) works against the configured Akeyless endpoint before touching any AWX object that depends on it.
