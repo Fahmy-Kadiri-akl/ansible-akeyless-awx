@@ -1,0 +1,32 @@
+# Example inventory source that uses the Akeyless SSH cert flow.
+#
+# On each sync the plugin signs ssh_cert_public_key against the named
+# Akeyless SSH cert issuer, reads the matching private key from a static
+# secret, and attaches three host_vars per host:
+#   - akeyless_ssh_signed_cert
+#   - akeyless_ssh_private_key
+#   - akeyless_ssh_cert_username
+#
+# Playbooks that target these hosts should `import_role` the
+# akeyless.awx_integration.ssh_cert role at the top of the play. The role
+# materializes the cert + key into tempfiles in the EE pod and wires
+# `ansible_ssh_extra_args` to use them.
+#
+# Replace the values below with your own:
+#   - ssh_cert_issuer: an SSH certificate issuer in your Akeyless tenant
+#   - ssh_cert_username: must be in the issuer's allowed_users list
+#   - ssh_cert_private_key_secret: an Akeyless static secret holding the
+#     OpenSSH-format private key matching the public key below
+#   - ssh_cert_public_key: the matching public key
+
+plugin: akeyless.awx_integration.akeyless
+
+hosts:
+  - app01.example.com
+  - app02.example.com
+default_group: ssh_cert_demo
+
+ssh_cert_issuer: /path/to/your/ssh-cert-issuer
+ssh_cert_username: ubuntu
+ssh_cert_private_key_secret: /path/to/your/ssh-private-key-secret
+ssh_cert_public_key: ssh-rsa <REPLACE_WITH_YOUR_PUBLIC_KEY> user@host

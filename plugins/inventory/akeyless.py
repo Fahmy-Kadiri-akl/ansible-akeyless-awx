@@ -136,9 +136,56 @@ DOCUMENTATION = r'''
         description:
           - Explicit list of Akeyless secret-to-variable mappings. Combined
             with anything discovered by I(secret_path_prefix).
+          - Each entry has C(name) (Akeyless path), C(var) (resulting Ansible
+            variable name), and an optional C(type) field of
+            C(static-secret), C(rotated-secret), or C(dynamic-secret).
+            C(type) defaults to C(static-secret) when omitted.
+          - Entries with C(type=dynamic-secret) may also include an
+            C(args) dict whose keys/values are passed as the dynamic
+            secret's runtime arguments.
         type: list
         elements: dict
         default: []
+      ssh_cert_issuer:
+        description:
+          - Name of an Akeyless SSH Certificate Issuer. When set, the plugin
+            signs an SSH public key on each sync and attaches the resulting
+            certificate as host_vars (`akeyless_ssh_signed_cert`,
+            `akeyless_ssh_private_key`, `akeyless_ssh_cert_username`). The
+            companion `akeyless.awx_integration.ssh_cert` role materializes
+            those host_vars into tempfiles and wires them into
+            `ansible_ssh_extra_args`.
+        type: str
+      ssh_cert_username:
+        description:
+          - Cert subject the issuer should sign for. Sent as
+            C(--cert-username) to the Akeyless cert issuer.
+        type: str
+      ssh_cert_principals:
+        description: Optional list of additional valid principals to embed in the cert.
+        type: list
+        elements: str
+        default: []
+      ssh_cert_public_key:
+        description:
+          - Inline SSH public key (the literal `ssh-rsa AAAA...`/etc string)
+            the issuer should sign. Mutually exclusive with
+            I(ssh_cert_public_key_secret).
+        type: str
+      ssh_cert_public_key_secret:
+        description:
+          - Akeyless static-secret path that holds the SSH public key to sign.
+            Use this when the public key lives alongside its private key in
+            Akeyless. Takes precedence over I(ssh_cert_public_key).
+        type: str
+      ssh_cert_private_key_secret:
+        description:
+          - Akeyless static-secret path that holds the SSH private key
+            corresponding to the public key being signed. Required when
+            I(ssh_cert_issuer) is set. The plugin attaches the value as
+            the `akeyless_ssh_private_key` host_var so the SSH client in
+            the EE can use it together with the signed cert.
+        type: str
       hosts:
         description:
           - List of host names to attach the fetched secrets to.
@@ -196,6 +243,17 @@ except ImportError as e:
     _IMPORT_ERR = e
 
 
+_SUPPORTED_SECRET_TYPES = {'static-secret', 'rotated-secret', 'dynamic-secret'}
+
+# Akeyless list_items returns item_type in this form; map to our user-facing
+# values (which match the secret_types option).
+_LIST_ITEMS_TYPE_MAP = {
+    'STATIC_SECRET': 'static-secret',
+    'ROTATED_SECRET': 'rotated-secret',
+    'DYNAMIC_SECRET': 'dynamic-secret',
+}
+
+
 class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
     NAME = 'akeyless.awx_integration.akeyless'
 
@@ -233,23 +291,24 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         for entry in secrets_cfg:
             if 'name' not in entry or 'var' not in entry:
                 raise AnsibleParserError("each 'secrets' entry must have 'name' and 'var' keys")
+            entry.setdefault('type', 'static-secret')
+            if entry['type'] not in _SUPPORTED_SECRET_TYPES:
+                raise AnsibleParserError(
+                    "secrets entry %s has unsupported type %r; expected one of %s"
+                    % (entry['name'], entry['type'], sorted(_SUPPORTED_SECRET_TYPES))
+                )
         discovered = self._discover_via_prefix(api_client, token)
         secrets_cfg.extend(discovered)
 
-        if not secrets_cfg:
+        if not secrets_cfg and not self.get_option('ssh_cert_issuer'):
             raise AnsibleParserError(
-                "no secrets configured: provide 'secret_path_prefix' (recommended) "
-                "and/or an explicit 'secrets' list"
+                "no secrets configured: provide 'secret_path_prefix' (recommended), "
+                "an explicit 'secrets' list, and/or 'ssh_cert_issuer' for SSH cert signing"
             )
 
-        names = [s['name'] for s in secrets_cfg]
-        try:
-            body = AkeylessHelper.build_get_secret_val_body(names, {'token': token})
-            secrets_by_name = api_client.get_secret_value(body)
-        except ApiException as e:
-            raise AnsibleError('Akeyless get_secret_value failed: ' + AkeylessHelper.build_api_err_msg(e, 'get_secret_value'))
-
-        self._populate_inventory(secrets_cfg, secrets_by_name)
+        secrets_by_name = self._fetch_secret_values(api_client, token, secrets_cfg)
+        ssh_vars = self._fetch_ssh_cert_vars(api_client, token, secrets_by_name)
+        self._populate_inventory(secrets_cfg, secrets_by_name, ssh_vars)
 
     def _discover_via_prefix(self, api_client, token):
         prefix = self.get_option('secret_path_prefix')
@@ -293,8 +352,178 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
                     'Akeyless: duplicate variable name %s (from %s) skipped' % (var, name))
                 continue
             seen.add(var)
-            out.append({'name': name, 'var': var})
+            api_type = getattr(it, 'item_type', None) or 'STATIC_SECRET'
+            entry_type = _LIST_ITEMS_TYPE_MAP.get(api_type, 'static-secret')
+            out.append({'name': name, 'var': var, 'type': entry_type})
         return out
+
+    def _fetch_secret_values(self, api_client, token, secrets_cfg):
+        """Group secrets_cfg by type and dispatch to the right Akeyless API.
+
+        Returns {secret_name: value}, where value is either a string (static,
+        rotated, single-field dynamic) or a dict (multi-field dynamic).
+        """
+        results = {}
+
+        static_names = [s['name'] for s in secrets_cfg if s['type'] == 'static-secret']
+        if static_names:
+            try:
+                body = AkeylessHelper.build_get_secret_val_body(static_names, {'token': token})
+                resp = api_client.get_secret_value(body)
+            except ApiException as e:
+                raise AnsibleError(
+                    'Akeyless get_secret_value failed: '
+                    + AkeylessHelper.build_api_err_msg(e, 'get_secret_value')
+                )
+            # get_secret_value returns a dict {name: value}.
+            if isinstance(resp, dict):
+                results.update(resp)
+            else:
+                self.display.warning(
+                    'Akeyless: unexpected get_secret_value response type %s' % type(resp).__name__
+                )
+
+        for s in secrets_cfg:
+            if s['type'] == 'rotated-secret':
+                try:
+                    body = AkeylessHelper.build_get_rs_value_body(s['name'], {'token': token})
+                    resp = api_client.get_rotated_secret_value(body)
+                except ApiException as e:
+                    self.display.warning(
+                        'Akeyless: get_rotated_secret_value failed for %s: %s'
+                        % (s['name'], AkeylessHelper.build_api_err_msg(e, 'get_rotated_secret_value'))
+                    )
+                    continue
+                results[s['name']] = self._coerce_secret_value(resp)
+            elif s['type'] == 'dynamic-secret':
+                params = {'token': token}
+                if s.get('args'):
+                    params['args'] = s['args']
+                try:
+                    body = AkeylessHelper.build_get_ds_value_body(s['name'], params)
+                    resp = api_client.get_dynamic_secret_value(body)
+                except ApiException as e:
+                    self.display.warning(
+                        'Akeyless: get_dynamic_secret_value failed for %s: %s'
+                        % (s['name'], AkeylessHelper.build_api_err_msg(e, 'get_dynamic_secret_value'))
+                    )
+                    continue
+                results[s['name']] = self._coerce_secret_value(resp)
+
+        return results
+
+    def _fetch_ssh_cert_vars(self, api_client, token, secrets_by_name):
+        """If ssh_cert_issuer is configured, sign the public key and return
+        the host_var dict. Returns {} when SSH-cert signing is not configured.
+        """
+        issuer = self.get_option('ssh_cert_issuer')
+        if not issuer:
+            return {}
+
+        cert_username = self.get_option('ssh_cert_username')
+        if not cert_username:
+            raise AnsibleParserError(
+                'ssh_cert_username is required when ssh_cert_issuer is set'
+            )
+
+        priv_key_secret = self.get_option('ssh_cert_private_key_secret')
+        if not priv_key_secret:
+            raise AnsibleParserError(
+                'ssh_cert_private_key_secret is required when ssh_cert_issuer is set'
+            )
+
+        pub_key_secret = self.get_option('ssh_cert_public_key_secret')
+        pub_key_inline = self.get_option('ssh_cert_public_key')
+        if not pub_key_secret and not pub_key_inline:
+            raise AnsibleParserError(
+                'one of ssh_cert_public_key or ssh_cert_public_key_secret '
+                'is required when ssh_cert_issuer is set'
+            )
+
+        # Resolve key material. Prefer secrets we already fetched in the main
+        # secret-fetch pass; fall back to a one-off get_secret_value if the
+        # path isn't in secrets_cfg.
+        priv_key = self._resolve_secret_value(api_client, token, priv_key_secret, secrets_by_name)
+        if pub_key_secret:
+            pub_key = self._resolve_secret_value(api_client, token, pub_key_secret, secrets_by_name)
+        else:
+            pub_key = pub_key_inline
+
+        if not isinstance(priv_key, str) or not priv_key.strip():
+            raise AnsibleError(
+                'ssh_cert_private_key_secret %s did not return a string value'
+                % priv_key_secret
+            )
+        if not isinstance(pub_key, str) or not pub_key.strip():
+            raise AnsibleError(
+                'SSH public key for ssh_cert_issuer is empty or non-string'
+            )
+
+        principals = self.get_option('ssh_cert_principals') or []
+        try:
+            body = akeyless.GetSSHCertificate(
+                cert_issuer_name=issuer,
+                cert_username=cert_username,
+                public_key_data=pub_key,
+                token=token,
+            )
+            if principals:
+                body.cert_username = ','.join([cert_username] + list(principals))
+            resp = api_client.get_ssh_certificate(body)
+        except ApiException as e:
+            raise AnsibleError(
+                'Akeyless get_ssh_certificate failed: '
+                + AkeylessHelper.build_api_err_msg(e, 'get_ssh_certificate')
+            )
+
+        signed = getattr(resp, 'data', None) or getattr(resp, 'cert', None) or str(resp)
+
+        return {
+            'akeyless_ssh_signed_cert': signed,
+            'akeyless_ssh_private_key': priv_key,
+            'akeyless_ssh_cert_username': cert_username,
+        }
+
+    def _resolve_secret_value(self, api_client, token, name, secrets_by_name):
+        if name in secrets_by_name:
+            return secrets_by_name[name]
+        try:
+            body = AkeylessHelper.build_get_secret_val_body([name], {'token': token})
+            resp = api_client.get_secret_value(body)
+        except ApiException as e:
+            raise AnsibleError(
+                'Akeyless get_secret_value failed for %s: %s'
+                % (name, AkeylessHelper.build_api_err_msg(e, 'get_secret_value'))
+            )
+        if isinstance(resp, dict):
+            return resp.get(name)
+        return resp
+
+    def _coerce_secret_value(self, resp):
+        """Normalize a rotated/dynamic secret response into a host_var-friendly value.
+
+        The SDK returns either a primitive (string, dict), a model object with
+        a single `value` attribute, or a dict-like object. Hand back whichever
+        form is most useful for downstream consumers.
+        """
+        if isinstance(resp, (str, int, float, bool)):
+            return resp
+        if isinstance(resp, dict):
+            if list(resp.keys()) == ['value']:
+                return resp['value']
+            return resp
+        # Model object: prefer .value (single-field) then to_dict()
+        value = getattr(resp, 'value', None)
+        if value is not None and not isinstance(value, (dict, list)):
+            return value
+        to_dict = getattr(resp, 'to_dict', None)
+        if callable(to_dict):
+            d = to_dict()
+            if isinstance(d, dict):
+                if list(d.keys()) == ['value']:
+                    return d['value']
+                return d
+        return str(resp)
 
     def _build_api_client(self, opts):
         if opts.get('access_type') == 'k8s' and opts.get('akeyless_gateway_url'):
@@ -374,7 +603,7 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
         except OSError as e:
             raise AnsibleError('Cannot read PEM file %s: %s' % (path, e))
 
-    def _populate_inventory(self, secrets_cfg, secrets_by_name):
+    def _populate_inventory(self, secrets_cfg, secrets_by_name, ssh_vars=None):
         hosts = self.get_option('hosts') or []
         groups = self.get_option('groups') or {}
         default_group = self.get_option('default_group')
@@ -389,7 +618,7 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
             self.inventory.add_host(host)
             if default_group:
                 self.inventory.add_child(default_group, host)
-            self._set_vars_for(host, secrets_cfg, secrets_by_name)
+            self._set_vars_for(host, secrets_cfg, secrets_by_name, ssh_vars)
 
         for group_name, group_hosts in groups.items():
             self.inventory.add_group(group_name)
@@ -398,12 +627,15 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
             for host in group_hosts or []:
                 self.inventory.add_host(host)
                 self.inventory.add_child(group_name, host)
-            self._set_vars_for(group_name, secrets_cfg, secrets_by_name)
+            self._set_vars_for(group_name, secrets_cfg, secrets_by_name, ssh_vars)
 
-    def _set_vars_for(self, target, secrets_cfg, secrets_by_name):
+    def _set_vars_for(self, target, secrets_cfg, secrets_by_name, ssh_vars=None):
         for s in secrets_cfg:
             value = secrets_by_name.get(s['name']) if isinstance(secrets_by_name, dict) else None
             if value is None:
                 self.display.warning('Akeyless: secret %s not returned' % s['name'])
                 continue
             self.inventory.set_variable(target, s['var'], value)
+        if ssh_vars:
+            for var_name, var_value in ssh_vars.items():
+                self.inventory.set_variable(target, var_name, var_value)
