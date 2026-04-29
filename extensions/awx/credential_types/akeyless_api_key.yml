@@ -37,6 +37,11 @@ inputs:
       type: string
       secret: true
       help_text: The access key paired with the access ID. Treat as a long-lived bearer secret; rotate on Akeyless when AWX is rebuilt.
+    - id: validate_certs
+      label: Validate Gateway TLS Certificate
+      type: boolean
+      default: true
+      help_text: Disable only when the customer gateway uses a self-signed cert in a non-production environment.
   required:
     - akeyless_api_url
     - access_id
@@ -49,3 +54,4 @@ injectors:
     AKEYLESS_ACCESS_ID: "{{ access_id }}"
     AKEYLESS_ACCESS_TYPE: api_key
     AKEYLESS_ACCESS_KEY: "{{ access_key }}"
+    AKEYLESS_VALIDATE_CERTS: "{{ validate_certs | default(true) | string | lower }}"

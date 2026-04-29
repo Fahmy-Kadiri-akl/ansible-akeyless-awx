@@ -54,6 +54,11 @@ inputs:
       multiline: true
       secret: true
       help_text: PEM-encoded private key matching the client certificate.
+    - id: validate_certs
+      label: Validate Gateway TLS Certificate
+      type: boolean
+      default: true
+      help_text: Disable only when the customer gateway uses a self-signed cert in a non-production environment. For production with a private CA, bake the CA into the EE image's trust store rather than disabling verification.
   required:
     - akeyless_api_url
     - access_id
@@ -68,6 +73,7 @@ injectors:
     AKEYLESS_ACCESS_TYPE: cert
     AKEYLESS_CERT_FILE: "{{ tower.filename.cert }}"
     AKEYLESS_KEY_FILE: "{{ tower.filename.key }}"
+    AKEYLESS_VALIDATE_CERTS: "{{ validate_certs | default(true) | string | lower }}"
   file:
     template.cert: "{{ cert_data }}"
     template.key: "{{ key_data }}"
