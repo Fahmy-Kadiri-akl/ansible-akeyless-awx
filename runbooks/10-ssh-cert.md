@@ -20,7 +20,7 @@ In addition to the base prereqs from
 | The username you intend to use is in the issuer's `allowed_users` | `akeyless describe-item --name <issuer-name> --json` and check `certificate_issue_details.ssh_cert_issuer_details.allowed_users`. |
 | The SSH keypair that will be used by AWX | An OpenSSH-format private key. The matching public key will be signed; the private key must live in an Akeyless static secret. See "Seed the keypair" below. |
 | The role bound to your AWX cert auth method has `read+list` on the SSH issuer's path | `akeyless set-role-rule --role-name <role> --path "/path/to/ssh-issuers/*" --capability read --capability list --token <admin-token>` if not already granted. |
-| The target SSH server trusts the issuer's CA | The target's `sshd_config` references a `TrustedUserCAKeys` file containing the issuer's public CA. The issuer's CA can be retrieved with `akeyless get-ssh-certificate-issuer-public-key --name <issuer>`. Out of scope for this runbook; consult your platform team. |
+| The target SSH server trusts the issuer's CA | The target's `sshd_config` references a `TrustedUserCAKeys` file containing the issuer's public CA. Retrieve the CA from the Akeyless console (open the SSH cert issuer item and copy the public key from its details panel), or via `akeyless describe-item --name <issuer> --json` and copy the public key out of the response. Out of scope for this runbook; consult your platform team. |
 
 ## Step 1: seed the SSH keypair as an Akeyless static secret
 
@@ -246,9 +246,11 @@ session opens. To test against a real host:
    ```
    TrustedUserCAKeys /etc/ssh/akeyless-issuer-ca.pub
    ```
-   where the file holds the issuer's CA public key (retrieve once with
-   `akeyless get-ssh-certificate-issuer-public-key --name <issuer>` or
-   the equivalent UI).
+   where the file holds the issuer's CA public key. Retrieve it once
+   from the Akeyless console (open the SSH cert issuer item and copy
+   the public key from its details panel), or from
+   `akeyless describe-item --name <issuer> --json` (the response
+   includes the CA public key under the issuer's details).
 3. Confirm the target has an `AuthorizedPrincipalsFile` or a matching
    user account for the cert's username (`ubuntu` in the example).
 4. Re-launch the job. The first task that exercises the SSH connection

@@ -120,7 +120,7 @@ commit a file like this and push:
         msg: "{{ inventory_hostname }} sees db_password of length {{ db_password | length }}"
 ```
 
-Notice what is not in this playbook: no `akeyless login`, no
+Notice what is not in this playbook: no `akeyless auth`, no
 `get_secret_value` lookup, no cert handling. The secret is a plain
 `host_var`.
 
