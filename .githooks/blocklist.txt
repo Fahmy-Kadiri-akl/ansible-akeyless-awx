@@ -1,0 +1,41 @@
+# Pre-commit / commit-msg blocklist.
+#
+# Patterns are case-insensitive POSIX extended regexes (passed to
+# `grep -iE`). One per line. Lines beginning with # are comments.
+# Empty lines are ignored.
+#
+# A match in either staged file content (pre-commit hook) or in the
+# commit message text (commit-msg hook) blocks the commit. Bypass with
+# `git commit --no-verify` only when you are sure the match is benign.
+#
+# Add to this file when a new sensitive name or path appears in your
+# environment. Removing entries should be deliberate.
+
+# ---- Customer names ----
+# Catch any case variant including "PEPSI", "Pepsi", "pepsico",
+# and the common "abn-amro" / "abn amro" / "abnamro" stylings.
+\bpepsi(co)?\b
+\babn[ -]?amro\b
+
+# ---- Internal infrastructure (lab) ----
+# These reveal the validation environment without adding any value
+# to a public repo.
+fklab\.local
+\bmicrok8s\b
+localhost:32000
+
+# ---- Real seeded credential values ----
+# These are the literal strings we know were stored under /apps/prod/
+# during validation. If any of them ever appears in a diff or commit
+# message, it's a real secret leak (not just a customer-name leak).
+ProdPgPasswd-2026
+AKIAIOSFODNN7EXAMPLE2
+jenkins-FINAL-VERIFY-2026
+
+# ---- Tenant-specific paths ----
+# Path identifiers that are not credentials but still leak environment
+# detail when they appear in a public-facing repo. Generic-looking paths
+# such as `/apps/prod` are deliberately NOT in this list because they
+# are also the documented examples in the runbooks; do not block them.
+CLAW-SSH-ISSUER
+/test/pepsi-poc/

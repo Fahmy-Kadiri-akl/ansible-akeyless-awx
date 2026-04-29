@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Block commits whose staged content matches any pattern in
+# .githooks/blocklist.txt. Patterns are case-insensitive POSIX ERE.
+# Bypass intentionally with `git commit --no-verify`.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BLOCKLIST="${SCRIPT_DIR}/blocklist.txt"
+
+if [ ! -f "$BLOCKLIST" ]; then
+  exit 0
+fi
+
+# Only inspect added or modified lines in the staged diff. Using
+# --diff-filter excludes deletions, since deleting a flagged string is
+# always allowed. Exclude the hooks directory itself, since blocklist.txt
+# legitimately contains the patterns the hook is looking for.
+DIFF=$(git diff --cached --no-color --diff-filter=AM -U0 -- ':(exclude).githooks/*')
+
+# If there is nothing to scan (e.g. a merge commit, or only file mode
+# changes), pass.
+if [ -z "$DIFF" ]; then
+  exit 0
+fi
+
+# Keep only the added lines (drop diff metadata).
+ADDED=$(printf '%s\n' "$DIFF" \
+  | grep -E '^\+' \
+  | grep -vE '^\+\+\+')
+
+if [ -z "$ADDED" ]; then
+  exit 0
+fi
+
+HITS=""
+while IFS= read -r pattern; do
+  [ -z "$pattern" ] && continue
+  case "$pattern" in '#'*) continue ;; esac
+  if printf '%s\n' "$ADDED" | grep -iqE "$pattern"; then
+    HITS="${HITS}  ${pattern}
+"
+  fi
+done < "$BLOCKLIST"
+
+if [ -n "$HITS" ]; then
+  printf '\n[pre-commit] blocklist match in staged content. Patterns:\n%s\n' "$HITS"
+  printf 'Edit the offending lines, or update .githooks/blocklist.txt if the\n'
+  printf 'pattern is no longer sensitive. Use `git commit --no-verify` to bypass.\n\n'
+  exit 1
+fi
+
+exit 0

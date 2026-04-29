@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Block commits whose message matches any pattern in
+# .githooks/blocklist.txt. Argument $1 is the path to the prepared
+# commit message file.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BLOCKLIST="${SCRIPT_DIR}/blocklist.txt"
+MSG_FILE="${1:-}"
+
+if [ ! -f "$BLOCKLIST" ] || [ -z "$MSG_FILE" ] || [ ! -f "$MSG_FILE" ]; then
+  exit 0
+fi
+
+# Strip comment lines (those beginning with `#`) from the message
+# before scanning, so the user is not blocked by git's own scissors
+# section or any commented-out helper text.
+MSG=$(grep -vE '^#' "$MSG_FILE" || true)
+
+if [ -z "$MSG" ]; then
+  exit 0
+fi
+
+HITS=""
+while IFS= read -r pattern; do
+  [ -z "$pattern" ] && continue
+  case "$pattern" in '#'*) continue ;; esac
+  if printf '%s\n' "$MSG" | grep -iqE "$pattern"; then
+    HITS="${HITS}  ${pattern}
+"
+  fi
+done < "$BLOCKLIST"
+
+if [ -n "$HITS" ]; then
+  printf '\n[commit-msg] blocklist match in commit message. Patterns:\n%s\n' "$HITS"
+  printf 'Edit the message, or update .githooks/blocklist.txt if the pattern\n'
+  printf 'is no longer sensitive. Use `git commit --no-verify` to bypass.\n\n'
+  exit 1
+fi
+
+exit 0
