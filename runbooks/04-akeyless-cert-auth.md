@@ -18,7 +18,7 @@ The rest of this document walks through CLI verification for each. After
 verification, continue to [step 05](05-awx-credential-type.md) to register
 the matching credential type in AWX.
 
-## Endpoint terminology (read this first)
+## Endpoint terminology
 
 Two distinct Akeyless endpoints exist, and they are not interchangeable.
 
