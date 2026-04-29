@@ -7,9 +7,9 @@ the inventory plugin expects at job-run time.
 
 | File | Credential type | Use when |
 |---|---|---|
-| `akeyless_cert_auth.yml` | `Akeyless (Cert Auth)` | TLS client cert + key, recommended for most controllers. |
-| `akeyless_api_key.yml` | `Akeyless (API Key)` | Pre-shared `access_id` + `access_key`. |
-| `akeyless_k8s_auth.yml` | `Akeyless (Kubernetes Auth)` | AWX runs in Kubernetes and a customer Akeyless gateway is reachable. |
+| `akeyless_cert_auth.yml` | `Cert Auth` | TLS client cert + key, recommended for most controllers. |
+| `akeyless_api_key.yml` | `API Key` | Pre-shared `access_id` + `access_key`. |
+| `akeyless_k8s_auth.yml` | `Kubernetes Auth` | AWX runs in Kubernetes and a customer Akeyless gateway is reachable. |
 
 You will:
 
@@ -52,7 +52,7 @@ Pick the snippet that matches the credential type you want. Each is
 self-contained, requires no external tools, and prints back the new
 credential type's `id`. Save that id; step 2 below needs it.
 
-**Akeyless (Cert Auth)**:
+**Cert Auth**:
 
 ```bash
 AWX=https://ansible.example.com
@@ -62,7 +62,7 @@ curl -sk -u "$AUTH" -H 'Content-Type: application/json' \
   -X POST "$AWX/api/v2/credential_types/" --data @- <<'JSON' \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); print("CT_ID=" + str(d.get("id") or d))'
 {
-  "name": "Akeyless (Cert Auth)",
+  "name": "Cert Auth",
   "description": "Authenticate to Akeyless with a client certificate.",
   "kind": "cloud",
   "inputs": {
@@ -91,14 +91,14 @@ curl -sk -u "$AUTH" -H 'Content-Type: application/json' \
 JSON
 ```
 
-**Akeyless (API Key)**:
+**API Key**:
 
 ```bash
 curl -sk -u "$AUTH" -H 'Content-Type: application/json' \
   -X POST "$AWX/api/v2/credential_types/" --data @- <<'JSON' \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); print("CT_ID=" + str(d.get("id") or d))'
 {
-  "name": "Akeyless (API Key)",
+  "name": "API Key",
   "description": "Authenticate to Akeyless with an access ID + access key.",
   "kind": "cloud",
   "inputs": {
@@ -121,14 +121,14 @@ curl -sk -u "$AUTH" -H 'Content-Type: application/json' \
 JSON
 ```
 
-**Akeyless (Kubernetes Auth)**:
+**Kubernetes Auth**:
 
 ```bash
 curl -sk -u "$AUTH" -H 'Content-Type: application/json' \
   -X POST "$AWX/api/v2/credential_types/" --data @- <<'JSON' \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); print("CT_ID=" + str(d.get("id") or d))'
 {
-  "name": "Akeyless (Kubernetes Auth)",
+  "name": "Akeyless Kubernetes Auth",
   "description": "Authenticate to Akeyless with a Kubernetes ServiceAccount token.",
   "kind": "cloud",
   "inputs": {
@@ -176,7 +176,7 @@ you prefer Ansible-driven provisioning.
 
 ### What the inputs declare (per type)
 
-#### `Akeyless (Cert Auth)`
+#### `Cert Auth`
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
@@ -185,7 +185,7 @@ you prefer Ansible-driven provisioning.
 | **Client Certificate (PEM)** | multiline string | required | The full PEM, including the `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` lines. |
 | **Client Private Key (PEM)** | multiline string, secret | required | Unencrypted private key matching the certificate. AWX masks this on subsequent views. |
 
-#### `Akeyless (API Key)`
+#### `API Key`
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
@@ -193,7 +193,7 @@ you prefer Ansible-driven provisioning.
 | **Akeyless Access ID** | string | required | The access ID of the API-Key auth method. |
 | **Akeyless Access Key** | string, secret | required | The access key paired with the access ID. AWX masks this on subsequent views. |
 
-#### `Akeyless (Kubernetes Auth)`
+#### `Kubernetes Auth`
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
