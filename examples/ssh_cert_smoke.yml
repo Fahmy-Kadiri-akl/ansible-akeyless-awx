@@ -1,0 +1,53 @@
+# Smoke test for the akeyless.awx_integration.ssh_cert role.
+#
+# Imports the role on each target host, then asserts the role wired
+# up the SSH connection facts and that the materialized cert+key files
+# are present in the EE pod's /tmp.
+#
+# Use with an inventory whose source is the akeyless plugin configured
+# with ssh_cert_issuer set (see examples/ssh-cert.akeyless.yml).
+#
+# `connection: local` because the example hosts are fictional. The role
+# itself works the same against real hosts; just drop the line.
+
+- name: SSH-cert smoke test
+  hosts: all
+  gather_facts: false
+  connection: local
+  tasks:
+    - name: Materialize Akeyless-signed SSH cert + key
+      ansible.builtin.import_role:
+        name: akeyless.awx_integration.ssh_cert
+
+    - name: Assert connection facts are set by the role
+      ansible.builtin.assert:
+        that:
+          - ansible_user == akeyless_ssh_cert_username
+          - ansible_ssh_private_key_file is defined
+          - "'CertificateFile=' in ansible_ssh_extra_args"
+
+    - name: Confirm materialized key file exists
+      ansible.builtin.stat:
+        path: "{{ ansible_ssh_private_key_file }}"
+      delegate_to: localhost
+      register: key_stat
+
+    - name: Confirm materialized cert file exists
+      ansible.builtin.stat:
+        path: "{{ akeyless_ssh_cert_files_dir }}/{{ inventory_hostname }}-cert.pub"
+      delegate_to: localhost
+      register: cert_stat
+
+    - name: Assert files were written by the role
+      ansible.builtin.assert:
+        that:
+          - key_stat.stat.exists
+          - key_stat.stat.size > 0
+          - cert_stat.stat.exists
+          - cert_stat.stat.size > 0
+
+    - name: Show file sizes (no contents)
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} key={{ key_stat.stat.size }}b
+          cert={{ cert_stat.stat.size }}b user={{ ansible_user }}
